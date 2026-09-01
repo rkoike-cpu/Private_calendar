@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -52,9 +53,18 @@ func FetchToday(ctx context.Context) (*Forecast, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("open-meteo returned status %d: %s", resp.StatusCode, body)
+	}
+
 	var parsed openMeteoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode open-meteo response: %w", err)
+	}
+
+	if len(parsed.Hourly.Time) == 0 {
+		return nil, fmt.Errorf("open-meteo returned no hourly data")
 	}
 
 	forecast := &Forecast{Hourly: make([]HourlyPoint, 0, len(parsed.Hourly.Time))}

@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"io/fs"
+	"log"
 	"net/http"
 	"time"
 
@@ -201,6 +202,7 @@ func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 func weatherTodayHandler(w http.ResponseWriter, r *http.Request) {
 	forecast, err := weather.FetchToday(r.Context())
 	if err != nil {
+		log.Printf("weather fetch failed: %v", err)
 		http.Error(w, "failed to fetch weather", http.StatusBadGateway)
 		return
 	}
