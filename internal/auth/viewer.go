@@ -100,6 +100,11 @@ const loginPageHTML = `<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Personal Calendar</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+  <link rel="icon" href="/static/icon-192.png" />
+  <meta name="theme-color" content="#4a86e8" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <style>
     body { font-family: system-ui, sans-serif; max-width: 320px; margin: 4rem auto; padding: 1rem; }
     input { width: 100%; padding: 0.6rem; font-size: 1rem; margin-bottom: 0.75rem; box-sizing: border-box; }
