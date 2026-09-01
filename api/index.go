@@ -4,6 +4,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"personal-calendar/internal/bootstrap"
@@ -25,6 +26,7 @@ func init() {
 // r.URL.Path は常に "/api/index" になってしまう。本来のパスは
 // destinationに付けたクエリパラメータ "path" 経由で受け取り、ここで復元する。
 func Handler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[vercel debug] raw incoming path=%q rawQuery=%q", r.URL.Path, r.URL.RawQuery)
 	if p := r.URL.Query().Get("path"); p != "" {
 		r.URL.Path = "/" + p
 		q := r.URL.Query()
