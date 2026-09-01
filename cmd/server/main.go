@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 
 	"personal-calendar/internal/bootstrap"
+	"personal-calendar/internal/reminder"
 )
 
 func main() {
@@ -14,14 +16,16 @@ func main() {
 		port = "8080"
 	}
 
-	router, cleanup, err := bootstrap.NewRouter()
+	app, err := bootstrap.New()
 	if err != nil {
 		log.Fatalf("failed to initialize app: %v", err)
 	}
-	defer cleanup()
+	defer app.Close()
+
+	go reminder.Run(context.Background(), app.GoogleSvc, app.PushSvc, app.Store)
 
 	log.Printf("starting server on :%s", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
+	if err := http.ListenAndServe(":"+port, app.Router); err != nil {
 		log.Fatal(err)
 	}
 }

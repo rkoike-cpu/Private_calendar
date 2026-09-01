@@ -25,9 +25,79 @@ document.getElementById("cancel-add-event").addEventListener("click", () => {
 });
 document.getElementById("add-event-form").addEventListener("submit", submitEventForm);
 document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
+document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
 
 render(); // 初期表示
 loadWeather();
+initNotifyButton();
+
+// ---------- 通知(プッシュ通知) ----------
+
+async function initNotifyButton() {
+  const btn = document.getElementById("notify-btn");
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    btn.hidden = true; // 非対応ブラウザ(iPhoneの一部バージョンなど)では隠す
+    return;
+  }
+
+  const registration = await navigator.serviceWorker.register("/static/sw.js");
+  const existing = await registration.pushManager.getSubscription();
+  btn.classList.toggle("active", !!existing);
+}
+
+async function toggleNotifications() {
+  const btn = document.getElementById("notify-btn");
+  const status = document.getElementById("status");
+  const registration = await navigator.serviceWorker.ready;
+  const existing = await registration.pushManager.getSubscription();
+
+  if (existing) {
+    await fetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: existing.endpoint }),
+    });
+    await existing.unsubscribe();
+    btn.classList.remove("active");
+    status.textContent = "通知をオフにしました";
+    return;
+  }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    status.textContent = "通知が許可されませんでした";
+    return;
+  }
+
+  const res = await fetch("/api/push/vapid-public-key");
+  const { publicKey } = await res.json();
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey),
+  });
+
+  await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+
+  btn.classList.add("active");
+  status.textContent = "通知をオンにしました(予定の10分前に届きます)";
+}
+
+// VAPID公開鍵(base64url文字列)をpushManager.subscribeが要求するUint8Arrayに変換する。
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 // ---------- 予定の追加・編集・削除 ----------
 

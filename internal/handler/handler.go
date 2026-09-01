@@ -9,6 +9,8 @@ import (
 
 	"personal-calendar/internal/auth"
 	"personal-calendar/internal/calendar"
+	"personal-calendar/internal/push"
+	"personal-calendar/internal/store"
 	"personal-calendar/internal/weather"
 	webassets "personal-calendar/web"
 )
@@ -18,7 +20,8 @@ import (
 // viewerSvc: ダッシュボードへのアクセス制御(合言葉ログイン、端末ごと)
 // googleSvc: Googleカレンダーへのアクセス(サーバー全体で共有する1つの認証)
 // weatherSvc: 天気予報の取得
-func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, weatherSvc *weather.Service) http.Handler {
+// pushSvc: プッシュ通知の送信、appStore: 通知購読情報の保存
+func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, weatherSvc *weather.Service, pushSvc *push.Service, appStore *store.Store) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /login", viewerSvc.LoginPageHandler)
@@ -33,6 +36,9 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
 	mux.Handle("DELETE /api/events/{id}", viewerSvc.RequireAuth(deleteEventHandler(googleSvc)))
 	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(weatherTodayHandler(weatherSvc)))
+	mux.Handle("GET /api/push/vapid-public-key", viewerSvc.RequireAuth(vapidPublicKeyHandler(pushSvc)))
+	mux.Handle("POST /api/push/subscribe", viewerSvc.RequireAuth(pushSubscribeHandler(appStore)))
+	mux.Handle("POST /api/push/unsubscribe", viewerSvc.RequireAuth(pushUnsubscribeHandler(appStore)))
 
 	staticFS, err := fs.Sub(webassets.FS, "static")
 	if err != nil {
@@ -192,6 +198,67 @@ func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 
 		if err := calendar.DeleteEvent(r.Context(), client, eventID); err != nil {
 			http.Error(w, "failed to delete event", http.StatusBadGateway)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// vapidPublicKeyHandler は、フロントエンドがプッシュ通知を購読する際に必要な
+// VAPID公開鍵を返す。
+func vapidPublicKeyHandler(pushSvc *push.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"publicKey": pushSvc.PublicKey()})
+	}
+}
+
+type pushSubscribeRequest struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
+		P256dh string `json:"p256dh"`
+		Auth   string `json:"auth"`
+	} `json:"keys"`
+}
+
+// pushSubscribeHandler はブラウザからのプッシュ通知購読情報を保存する。
+func pushSubscribeHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req pushSubscribeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Endpoint == "" || req.Keys.P256dh == "" || req.Keys.Auth == "" {
+			http.Error(w, "endpoint and keys are required", http.StatusBadRequest)
+			return
+		}
+
+		if err := appStore.SavePushSubscription(req.Endpoint, req.Keys.P256dh, req.Keys.Auth); err != nil {
+			http.Error(w, "failed to save subscription", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+type pushUnsubscribeRequest struct {
+	Endpoint string `json:"endpoint"`
+}
+
+// pushUnsubscribeHandler はプッシュ通知の購読を解除する。
+func pushUnsubscribeHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req pushUnsubscribeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := appStore.DeletePushSubscription(req.Endpoint); err != nil {
+			http.Error(w, "failed to delete subscription", http.StatusInternalServerError)
 			return
 		}
 

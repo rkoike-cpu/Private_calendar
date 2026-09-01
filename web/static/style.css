@@ -21,6 +21,17 @@ body {
 .header-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+#notify-btn {
+  background: #eee;
+  color: #333;
+}
+
+#notify-btn.active {
+  background: #34a853;
+  color: white;
 }
 
 #add-event-btn {

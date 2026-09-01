@@ -26,6 +26,18 @@ CREATE TABLE IF NOT EXISTS viewer_sessions (
 	id         TEXT PRIMARY KEY,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+	endpoint   TEXT PRIMARY KEY,
+	p256dh     TEXT NOT NULL,
+	auth       TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sent_reminders (
+	event_id TEXT PRIMARY KEY,
+	sent_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 // Store はSupabase(Postgres)への永続化を担う。
@@ -110,4 +122,64 @@ func (s *Store) ViewerSessionExists(id string) (bool, error) {
 		`SELECT EXISTS(SELECT 1 FROM viewer_sessions WHERE id = $1)`, id,
 	).Scan(&exists)
 	return exists, err
+}
+
+// PushSubscription はブラウザから登録されたプッシュ通知の送り先。
+type PushSubscription struct {
+	Endpoint string
+	P256dh   string
+	Auth     string
+}
+
+// SavePushSubscription はプッシュ通知の購読情報を保存する(同じendpointなら上書き)。
+func (s *Store) SavePushSubscription(endpoint, p256dh, auth string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
+		endpoint, p256dh, auth,
+	)
+	return err
+}
+
+// DeletePushSubscription は無効になった購読情報を削除する。
+func (s *Store) DeletePushSubscription(endpoint string) error {
+	_, err := s.db.Exec(`DELETE FROM push_subscriptions WHERE endpoint = $1`, endpoint)
+	return err
+}
+
+// ListPushSubscriptions は登録済みの購読情報を全件返す。
+func (s *Store) ListPushSubscriptions() ([]PushSubscription, error) {
+	rows, err := s.db.Query(`SELECT endpoint, p256dh, auth FROM push_subscriptions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subs []PushSubscription
+	for rows.Next() {
+		var sub PushSubscription
+		if err := rows.Scan(&sub.Endpoint, &sub.P256dh, &sub.Auth); err != nil {
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+// HasReminderBeenSent は、指定した予定について既にリマインダーを送信済みか確認する。
+func (s *Store) HasReminderBeenSent(eventID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM sent_reminders WHERE event_id = $1)`, eventID,
+	).Scan(&exists)
+	return exists, err
+}
+
+// MarkReminderSent は、指定した予定のリマインダーを送信済みとして記録する。
+func (s *Store) MarkReminderSent(eventID string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO sent_reminders (event_id) VALUES ($1) ON CONFLICT (event_id) DO NOTHING`, eventID,
+	)
+	return err
 }
