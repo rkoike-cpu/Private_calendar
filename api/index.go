@@ -26,12 +26,21 @@ func init() {
 // r.URL.Path は常に "/api/index" になってしまう。本来のパスは
 // destinationに付けたクエリパラメータ "path" 経由で受け取り、ここで復元する。
 func Handler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[vercel debug] raw incoming path=%q rawQuery=%q", r.URL.Path, r.URL.RawQuery)
+	rawPath := r.URL.Path
+	rawQuery := r.URL.RawQuery
+	log.Printf("[vercel debug] raw incoming path=%q rawQuery=%q", rawPath, rawQuery)
+
 	if p := r.URL.Query().Get("path"); p != "" {
 		r.URL.Path = "/" + p
 		q := r.URL.Query()
 		q.Del("path")
 		r.URL.RawQuery = q.Encode()
 	}
+
+	// ログ検索に頼らず curl -v で直接確認できるよう、デバッグ情報をヘッダーにも出す。
+	w.Header().Set("X-Debug-Raw-Path", rawPath)
+	w.Header().Set("X-Debug-Raw-Query", rawQuery)
+	w.Header().Set("X-Debug-Resolved-Path", r.URL.Path)
+
 	router.ServeHTTP(w, r)
 }
