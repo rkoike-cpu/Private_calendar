@@ -96,3 +96,38 @@ func CreateEvent(ctx context.Context, client *http.Client, summary string, start
 		End:     created.End.DateTime,
 	}, nil
 }
+
+// UpdateEvent は既存の予定の内容を書き換える。
+func UpdateEvent(ctx context.Context, client *http.Client, eventID, summary string, start, end time.Time) (*Event, error) {
+	srv, err := googlecalendar.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+
+	event := &googlecalendar.Event{
+		Summary: summary,
+		Start:   &googlecalendar.EventDateTime{DateTime: start.Format(time.RFC3339)},
+		End:     &googlecalendar.EventDateTime{DateTime: end.Format(time.RFC3339)},
+	}
+
+	updated, err := srv.Events.Update("primary", eventID, event).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Event{
+		ID:      updated.Id,
+		Summary: updated.Summary,
+		Start:   updated.Start.DateTime,
+		End:     updated.End.DateTime,
+	}, nil
+}
+
+// DeleteEvent はGoogleカレンダーから予定を削除する。
+func DeleteEvent(ctx context.Context, client *http.Client, eventID string) error {
+	srv, err := googlecalendar.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return err
+	}
+	return srv.Events.Delete("primary", eventID).Do()
+}

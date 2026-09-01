@@ -19,7 +19,7 @@
 
   <dialog id="add-event-dialog">
     <form id="add-event-form">
-      <h2>予定を追加</h2>
+      <h2 id="add-event-title">予定を追加</h2>
       <label>
         タイトル
         <input type="text" name="summary" required />
@@ -37,8 +37,10 @@
         <input type="time" name="end" required />
       </label>
       <menu>
+        <button type="button" id="delete-event-btn" hidden>削除</button>
+        <span class="menu-spacer"></span>
         <button type="button" id="cancel-add-event">キャンセル</button>
-        <button type="submit">追加</button>
+        <button type="submit" id="submit-event-btn">追加</button>
       </menu>
     </form>
   </dialog>

@@ -76,6 +76,15 @@ dialog#add-event-dialog menu button[type="button"] {
   color: #333;
 }
 
+dialog#add-event-dialog #delete-event-btn {
+  background: #e04141;
+  color: white;
+}
+
+dialog#add-event-dialog .menu-spacer {
+  flex: 1;
+}
+
 button {
   padding: 0.6rem 1rem;
   font-size: 0.95rem;
@@ -261,7 +270,7 @@ button {
   line-height: 1.2;
   overflow: hidden;
   box-sizing: border-box;
-  cursor: default;
+  cursor: pointer;
 }
 
 .event-popover {
@@ -367,7 +376,7 @@ button {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  cursor: default;
+  cursor: pointer;
 }
 
 .cal-month-more {

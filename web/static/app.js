@@ -6,6 +6,7 @@ const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 let allEvents = [];
 let viewMode = "week"; // "day" | "week" | "month"
 let currentDate = startOfDay(new Date()); // 表示の基準日
+let editingEventId = null; // 編集中の予定ID(nullなら新規追加)
 
 document.getElementById("sync-google").addEventListener("click", syncGoogle);
 document.getElementById("prev-nav").addEventListener("click", () => changeDate(-1));
@@ -18,25 +19,44 @@ for (const btn of document.querySelectorAll("#view-toggle button")) {
   });
 }
 
-document.getElementById("add-event-btn").addEventListener("click", openAddEventDialog);
+document.getElementById("add-event-btn").addEventListener("click", () => openEventDialog(null));
 document.getElementById("cancel-add-event").addEventListener("click", () => {
   document.getElementById("add-event-dialog").close();
 });
-document.getElementById("add-event-form").addEventListener("submit", submitAddEvent);
+document.getElementById("add-event-form").addEventListener("submit", submitEventForm);
+document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
 
 render(); // 初期表示
 loadWeather();
 
-// ---------- 予定追加 ----------
+// ---------- 予定の追加・編集・削除 ----------
 
-function openAddEventDialog() {
+// event が null なら新規追加、指定されていれば編集モードでダイアログを開く。
+function openEventDialog(event) {
+  editingEventId = event ? event.ID : null;
+
   const form = document.getElementById("add-event-form");
   form.reset();
-  form.date.value = formatDateInput(currentDate);
+
+  document.getElementById("add-event-title").textContent = event ? "予定を編集" : "予定を追加";
+  document.getElementById("submit-event-btn").textContent = event ? "更新" : "追加";
+  document.getElementById("delete-event-btn").hidden = !event;
+
+  if (event) {
+    const start = new Date(event.Start);
+    const end = new Date(event.End);
+    form.summary.value = event.Summary;
+    form.date.value = formatDateInput(start);
+    form.start.value = formatTimeInput(start);
+    form.end.value = formatTimeInput(end);
+  } else {
+    form.date.value = formatDateInput(currentDate);
+  }
+
   document.getElementById("add-event-dialog").showModal();
 }
 
-async function submitAddEvent(e) {
+async function submitEventForm(e) {
   e.preventDefault();
   const form = e.target;
   const summary = form.summary.value.trim();
@@ -53,14 +73,16 @@ async function submitAddEvent(e) {
   }
 
   const status = document.getElementById("status");
-  status.textContent = "予定を追加中...";
+  const isEditing = editingEventId !== null;
+  status.textContent = isEditing ? "予定を更新中..." : "予定を追加中...";
 
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
 
   try {
-    const res = await fetch("/api/events", {
-      method: "POST",
+    const url = isEditing ? `/api/events/${editingEventId}` : "/api/events";
+    const res = await fetch(url, {
+      method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         summary,
@@ -70,18 +92,47 @@ async function submitAddEvent(e) {
     });
 
     if (!res.ok) {
-      status.textContent = `予定の追加に失敗しました (status: ${res.status})`;
+      status.textContent = `${isEditing ? "更新" : "追加"}に失敗しました (status: ${res.status})`;
       return;
     }
 
-    const created = await res.json();
-    allEvents.push(created);
+    const saved = await res.json();
+    if (isEditing) {
+      allEvents = allEvents.map((ev) => (ev.ID === saved.ID ? saved : ev));
+    } else {
+      allEvents.push(saved);
+    }
     document.getElementById("add-event-dialog").close();
     render();
-    status.textContent = "予定を追加しました";
+    status.textContent = isEditing ? "予定を更新しました" : "予定を追加しました";
   } finally {
     submitBtn.disabled = false;
   }
+}
+
+async function deleteEditingEvent() {
+  if (editingEventId === null) return;
+  if (!confirm("この予定を削除しますか?")) return;
+
+  const status = document.getElementById("status");
+  status.textContent = "予定を削除中...";
+
+  const res = await fetch(`/api/events/${editingEventId}`, { method: "DELETE" });
+  if (!res.ok) {
+    status.textContent = `削除に失敗しました (status: ${res.status})`;
+    return;
+  }
+
+  allEvents = allEvents.filter((ev) => ev.ID !== editingEventId);
+  document.getElementById("add-event-dialog").close();
+  render();
+  status.textContent = "予定を削除しました";
+}
+
+function formatTimeInput(date) {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
 }
 
 function formatDateInput(date) {
@@ -342,6 +393,7 @@ function buildEventElement(event, start, end, col = 0, colCount = 1) {
   el.textContent = `${formatTime(start)} ${event.Summary}`;
 
   attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
+  el.addEventListener("click", () => openEventDialog(event));
 
   return el;
 }
@@ -405,6 +457,7 @@ function renderMonthView(anchor) {
       el.className = "cal-month-event";
       el.textContent = `${formatTime(start)} ${event.Summary}`;
       attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
+      el.addEventListener("click", () => openEventDialog(event));
       cell.appendChild(el);
     }
     if (dayEvents.length > maxShown) {

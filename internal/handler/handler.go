@@ -28,6 +28,8 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService) htt
 	mux.Handle("GET /", viewerSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
 	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc)))
 	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
+	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
+	mux.Handle("DELETE /api/events/{id}", viewerSvc.RequireAuth(deleteEventHandler(googleSvc)))
 	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(http.HandlerFunc(weatherTodayHandler)))
 
 	staticFS, err := fs.Sub(webassets.FS, "static")
@@ -125,6 +127,73 @@ func createEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(event)
+	}
+}
+
+// updateEventHandler はGoogleカレンダーの既存の予定を書き換える。
+func updateEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		client, ok := googleSvc.HTTPClient(r.Context())
+		if !ok {
+			http.Error(w, "Googleカレンダーが未連携です。会社PCなど信頼できる端末で /auth/google/login を開いて連携してください。", http.StatusPreconditionFailed)
+			return
+		}
+
+		eventID := r.PathValue("id")
+
+		var req createEventRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Summary == "" {
+			http.Error(w, "summary is required", http.StatusBadRequest)
+			return
+		}
+
+		start, err := time.Parse(time.RFC3339, req.Start)
+		if err != nil {
+			http.Error(w, "invalid start time", http.StatusBadRequest)
+			return
+		}
+		end, err := time.Parse(time.RFC3339, req.End)
+		if err != nil {
+			http.Error(w, "invalid end time", http.StatusBadRequest)
+			return
+		}
+		if !end.After(start) {
+			http.Error(w, "end must be after start", http.StatusBadRequest)
+			return
+		}
+
+		event, err := calendar.UpdateEvent(r.Context(), client, eventID, req.Summary, start, end)
+		if err != nil {
+			http.Error(w, "failed to update event", http.StatusBadGateway)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(event)
+	}
+}
+
+// deleteEventHandler はGoogleカレンダーから予定を削除する。
+func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		client, ok := googleSvc.HTTPClient(r.Context())
+		if !ok {
+			http.Error(w, "Googleカレンダーが未連携です。会社PCなど信頼できる端末で /auth/google/login を開いて連携してください。", http.StatusPreconditionFailed)
+			return
+		}
+
+		eventID := r.PathValue("id")
+
+		if err := calendar.DeleteEvent(r.Context(), client, eventID); err != nil {
+			http.Error(w, "failed to delete event", http.StatusBadGateway)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
