@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"personal-calendar/internal/auth"
 	"personal-calendar/internal/handler"
@@ -23,7 +24,7 @@ func NewRouter() (router http.Handler, cleanup func(), err error) {
 		return nil, nil, fmt.Errorf("load credentials: %w", err)
 	}
 
-	dbURL := os.Getenv("DATABASE_URL")
+	dbURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if dbURL == "" {
 		return nil, nil, fmt.Errorf("DATABASE_URL is not set")
 	}
@@ -45,7 +46,7 @@ func NewRouter() (router http.Handler, cleanup func(), err error) {
 // loadCredentials は環境変数 GOOGLE_OAUTH_CREDENTIALS_JSON (JSON文字列そのもの、Vercel用) を優先し、
 // 無ければ GOOGLE_OAUTH_CREDENTIALS_FILE (ファイルパス、ローカル開発用) を読む。
 func loadCredentials() ([]byte, error) {
-	if raw := os.Getenv("GOOGLE_OAUTH_CREDENTIALS_JSON"); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("GOOGLE_OAUTH_CREDENTIALS_JSON")); raw != "" {
 		return []byte(raw), nil
 	}
 
