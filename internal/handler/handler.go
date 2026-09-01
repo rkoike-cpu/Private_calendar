@@ -13,16 +13,22 @@ import (
 )
 
 // NewRouter は本アプリの全HTTPルーティングを構築する。
-func NewRouter(authSvc *auth.Service) http.Handler {
+//
+// viewerSvc: ダッシュボードへのアクセス制御(合言葉ログイン、端末ごと)
+// googleSvc: Googleカレンダーへのアクセス(サーバー全体で共有する1つの認証)
+func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /auth/google/login", authSvc.LoginHandler)
-	mux.HandleFunc("GET /auth/google/callback", authSvc.CallbackHandler)
+	mux.HandleFunc("GET /login", viewerSvc.LoginPageHandler)
+	mux.HandleFunc("POST /login", viewerSvc.LoginHandler)
 
-	mux.Handle("GET /", authSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
-	mux.Handle("POST /api/sync/google", authSvc.RequireAuth(syncGoogleHandler(authSvc)))
-	mux.Handle("POST /api/events", authSvc.RequireAuth(createEventHandler(authSvc)))
-	mux.Handle("GET /api/weather/today", authSvc.RequireAuth(http.HandlerFunc(weatherTodayHandler)))
+	mux.Handle("GET /auth/google/login", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.LoginHandler)))
+	mux.Handle("GET /auth/google/callback", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.CallbackHandler)))
+
+	mux.Handle("GET /", viewerSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
+	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc)))
+	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
+	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(http.HandlerFunc(weatherTodayHandler)))
 
 	staticFS, err := fs.Sub(webassets.FS, "static")
 	if err != nil {
@@ -47,11 +53,11 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 // syncGoogleHandler は Google Calendar から最新の予定を取得して返す。
 // 「今月を含む前後1ヶ月(合計3ヶ月分の暦月)」を一度に取得する。
 // 例: 今日が9月なら 8/1 00:00 〜 11/1 00:00(排他)の範囲。
-func syncGoogleHandler(authSvc *auth.Service) http.HandlerFunc {
+func syncGoogleHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		client, ok := authSvc.HTTPClient(r)
+		client, ok := googleSvc.HTTPClient(r.Context())
 		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Googleカレンダーが未連携です。会社PCなど信頼できる端末で /auth/google/login を開いて連携してください。", http.StatusPreconditionFailed)
 			return
 		}
 
@@ -78,11 +84,11 @@ type createEventRequest struct {
 }
 
 // createEventHandler はGoogleカレンダーに新しい予定を作成する。
-func createEventHandler(authSvc *auth.Service) http.HandlerFunc {
+func createEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		client, ok := authSvc.HTTPClient(r)
+		client, ok := googleSvc.HTTPClient(r.Context())
 		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Googleカレンダーが未連携です。会社PCなど信頼できる端末で /auth/google/login を開いて連携してください。", http.StatusPreconditionFailed)
 			return
 		}
 

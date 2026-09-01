@@ -1,5 +1,4 @@
-// Package bootstrap は、ローカル実行(cmd/server)とVercelサーバーレス実行(api/index.go)の
-// 両方から共通で使う、アプリケーションの初期化処理をまとめる。
+// Package bootstrap は、アプリケーションの初期化処理をまとめる。
 package bootstrap
 
 import (
@@ -13,8 +12,7 @@ import (
 	"personal-calendar/internal/store"
 )
 
-// AllowedEmails はこのアプリへのログインを許可するGoogleアカウント。
-// スマホ・PCどちらからでも、このメールアドレスでログインすればアクセス可能。
+// AllowedEmails はGoogleカレンダーへの認証を許可するアカウント。
 var AllowedEmails = []string{"rkoike@netprotections.co.jp"}
 
 // NewRouter は環境変数から設定を読み込み、DB接続・認証サービス・ルーターを構築する。
@@ -29,23 +27,30 @@ func NewRouter() (router http.Handler, cleanup func(), err error) {
 		return nil, nil, fmt.Errorf("DATABASE_URL is not set")
 	}
 
-	sessionStore, err := store.Open(dbURL)
+	appStore, err := store.Open(dbURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open store: %w", err)
 	}
 
+	appPassword := strings.TrimSpace(os.Getenv("APP_PASSWORD"))
+	if appPassword == "" {
+		appStore.Close()
+		return nil, nil, fmt.Errorf("APP_PASSWORD is not set")
+	}
+	viewerSvc := auth.NewViewerService(appPassword, appStore)
+
 	redirectURL := strings.TrimSpace(os.Getenv("OAUTH_REDIRECT_URL"))
 
-	authSvc, err := auth.NewService(credentialsJSON, AllowedEmails, sessionStore, redirectURL)
+	googleSvc, err := auth.NewGoogleService(credentialsJSON, AllowedEmails, appStore, redirectURL)
 	if err != nil {
-		sessionStore.Close()
-		return nil, nil, fmt.Errorf("init auth: %w", err)
+		appStore.Close()
+		return nil, nil, fmt.Errorf("init google auth: %w", err)
 	}
 
-	return handler.NewRouter(authSvc), func() { sessionStore.Close() }, nil
+	return handler.NewRouter(viewerSvc, googleSvc), func() { appStore.Close() }, nil
 }
 
-// loadCredentials は環境変数 GOOGLE_OAUTH_CREDENTIALS_JSON (JSON文字列そのもの、Vercel用) を優先し、
+// loadCredentials は環境変数 GOOGLE_OAUTH_CREDENTIALS_JSON (JSON文字列そのもの) を優先し、
 // 無ければ GOOGLE_OAUTH_CREDENTIALS_FILE (ファイルパス、ローカル開発用) を読む。
 func loadCredentials() ([]byte, error) {
 	if raw := strings.TrimSpace(os.Getenv("GOOGLE_OAUTH_CREDENTIALS_JSON")); raw != "" {
