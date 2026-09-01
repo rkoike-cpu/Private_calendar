@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"golang.org/x/oauth2"
@@ -110,6 +111,7 @@ func (s *Service) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to save session", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("[auth debug] saved session id=%s email=%s host=%s", sessionID, email, r.Host)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -146,12 +148,15 @@ func (s *Service) HTTPClient(r *http.Request) (*http.Client, bool) {
 func (s *Service) sessionFromRequest(r *http.Request) (*Session, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
+		log.Printf("[auth debug] no cookie: path=%s host=%s err=%v", r.URL.Path, r.Host, err)
 		return nil, false
 	}
 	email, token, err := s.store.GetSession(cookie.Value)
 	if err != nil {
+		log.Printf("[auth debug] session lookup failed: path=%s host=%s cookie=%s err=%v", r.URL.Path, r.Host, cookie.Value, err)
 		return nil, false
 	}
+	log.Printf("[auth debug] session ok: path=%s email=%s", r.URL.Path, email)
 	return &Session{Email: email, Token: token}, true
 }
 
