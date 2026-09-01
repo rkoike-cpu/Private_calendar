@@ -1,0 +1,375 @@
+:root {
+  --border: #ddd;
+  --row-height: 44px;
+  --grid-start-hour: 7;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+  color: #222;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#add-event-btn {
+  background: #34a853;
+}
+
+dialog#add-event-dialog {
+  border: none;
+  border-radius: 10px;
+  padding: 1.25rem;
+  width: min(320px, 90vw);
+}
+
+dialog#add-event-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+dialog#add-event-dialog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+dialog#add-event-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+dialog#add-event-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+dialog#add-event-dialog input {
+  padding: 0.4rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+dialog#add-event-dialog menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+}
+
+dialog#add-event-dialog menu button[type="button"] {
+  background: #eee;
+  color: #333;
+}
+
+button {
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  background: #4a86e8;
+  color: white;
+  cursor: pointer;
+}
+
+#status {
+  min-height: 1.2rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+#weather h2 {
+  font-size: 1rem;
+  margin: 1rem 0 0.4rem;
+}
+
+.weather-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+}
+
+.weather-hour {
+  flex-shrink: 0;
+  width: 60px;
+  text-align: center;
+  padding: 0.4rem 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
+
+.weather-hour.now {
+  border-color: #4a86e8;
+  background: #eef4ff;
+}
+
+.weather-hour .emoji {
+  font-size: 1.2rem;
+}
+
+.weather-hour .temp {
+  font-weight: bold;
+}
+
+.weather-hour .humidity {
+  color: #777;
+}
+
+.view-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.view-toggle button {
+  background: #eee;
+  color: #333;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.view-toggle button.active {
+  background: #4a86e8;
+  color: white;
+}
+
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.week-nav button {
+  background: #eee;
+  color: #333;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.week-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#nav-label {
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.cal-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#calendar {
+  min-width: 640px;
+}
+
+.cal-header {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: #fafafa;
+}
+
+.cal-header .cal-time-header {
+  width: 50px;
+  flex-shrink: 0;
+}
+
+.cal-header .cal-day-header {
+  flex: 1;
+  text-align: center;
+  padding: 6px 2px;
+  font-size: 0.8rem;
+  border-left: 1px solid var(--border);
+}
+
+.cal-header .cal-day-header.today {
+  color: #4a86e8;
+  font-weight: bold;
+}
+
+.cal-body {
+  display: flex;
+  max-height: 70vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.cal-time-col {
+  width: 50px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.cal-time-label {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  text-align: right;
+  font-size: 0.7rem;
+  color: #999;
+  transform: translateY(-50%);
+}
+
+.cal-days {
+  flex: 1;
+  display: flex;
+  position: relative;
+}
+
+.cal-day-col {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--border);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--border) 0,
+    var(--border) 1px,
+    transparent 1px,
+    transparent var(--row-height)
+  );
+}
+
+.cal-event {
+  position: absolute;
+  background: #4a86e8;
+  color: white;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  overflow: hidden;
+  box-sizing: border-box;
+  cursor: default;
+}
+
+.event-popover {
+  position: fixed;
+  z-index: 50;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  max-width: 240px;
+  pointer-events: none;
+}
+
+.event-popover[hidden] {
+  display: none;
+}
+
+.event-popover .popover-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.event-popover .popover-time {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.cal-now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e04141;
+  z-index: 5;
+}
+
+.cal-now-line::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e04141;
+}
+
+#calendar-month {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-width: 640px;
+}
+
+#calendar-month[hidden] {
+  display: none;
+}
+
+.cal-month-dow {
+  text-align: center;
+  padding: 6px 2px;
+  font-size: 0.8rem;
+  background: #fafafa;
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-month-cell {
+  min-height: 90px;
+  padding: 4px;
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+  font-size: 0.7rem;
+}
+
+.cal-month-cell.outside {
+  background: #fafafa;
+  color: #bbb;
+}
+
+.cal-month-cell.today .cal-month-daynum {
+  color: white;
+  background: #4a86e8;
+  border-radius: 50%;
+}
+
+.cal-month-daynum {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.cal-month-event {
+  background: #4a86e8;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.cal-month-more {
+  color: #777;
+}
