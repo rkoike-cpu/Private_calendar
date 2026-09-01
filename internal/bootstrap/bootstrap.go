@@ -34,7 +34,9 @@ func NewRouter() (router http.Handler, cleanup func(), err error) {
 		return nil, nil, fmt.Errorf("open store: %w", err)
 	}
 
-	authSvc, err := auth.NewService(credentialsJSON, AllowedEmails, sessionStore)
+	redirectURL := strings.TrimSpace(os.Getenv("OAUTH_REDIRECT_URL"))
+
+	authSvc, err := auth.NewService(credentialsJSON, AllowedEmails, sessionStore, redirectURL)
 	if err != nil {
 		sessionStore.Close()
 		return nil, nil, fmt.Errorf("init auth: %w", err)

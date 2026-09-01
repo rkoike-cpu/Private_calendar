@@ -38,7 +38,10 @@ type Service struct {
 // allowedEmails に含まれるアカウントのみログインを許可するServiceを構築する。
 // セッションは sessionStore (Supabase/Postgres) に永続化されるため、
 // サーバーの再起動・再デプロイ後もログイン状態が保たれる。
-func NewService(credentialsJSON []byte, allowedEmails []string, sessionStore SessionStore) (*Service, error) {
+//
+// redirectURL が空でなければ、credentialsJSON 内のリダイレクトURI(通常はローカル開発用の
+// localhost)を上書きする。本番環境(Vercelなど)ではデプロイ先のURLを渡す必要がある。
+func NewService(credentialsJSON []byte, allowedEmails []string, sessionStore SessionStore, redirectURL string) (*Service, error) {
 	config, err := google.ConfigFromJSON(credentialsJSON,
 		"openid",
 		"https://www.googleapis.com/auth/userinfo.email",
@@ -48,6 +51,9 @@ func NewService(credentialsJSON []byte, allowedEmails []string, sessionStore Ses
 	)
 	if err != nil {
 		return nil, fmt.Errorf("parse credentials: %w", err)
+	}
+	if redirectURL != "" {
+		config.RedirectURL = redirectURL
 	}
 
 	allowed := make(map[string]bool, len(allowedEmails))
