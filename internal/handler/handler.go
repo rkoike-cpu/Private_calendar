@@ -17,7 +17,8 @@ import (
 //
 // viewerSvc: ダッシュボードへのアクセス制御(合言葉ログイン、端末ごと)
 // googleSvc: Googleカレンダーへのアクセス(サーバー全体で共有する1つの認証)
-func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService) http.Handler {
+// weatherSvc: 天気予報の取得
+func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, weatherSvc *weather.Service) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /login", viewerSvc.LoginPageHandler)
@@ -31,7 +32,7 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService) htt
 	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
 	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
 	mux.Handle("DELETE /api/events/{id}", viewerSvc.RequireAuth(deleteEventHandler(googleSvc)))
-	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(http.HandlerFunc(weatherTodayHandler)))
+	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(weatherTodayHandler(weatherSvc)))
 
 	staticFS, err := fs.Sub(webassets.FS, "static")
 	if err != nil {
@@ -199,14 +200,16 @@ func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 }
 
 // weatherTodayHandler は今日1日分の時間ごとの天気予報を返す。
-func weatherTodayHandler(w http.ResponseWriter, r *http.Request) {
-	forecast, err := weather.FetchToday(r.Context())
-	if err != nil {
-		log.Printf("weather fetch failed: %v", err)
-		http.Error(w, "failed to fetch weather", http.StatusBadGateway)
-		return
-	}
+func weatherTodayHandler(weatherSvc *weather.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		forecast, err := weatherSvc.FetchToday(r.Context())
+		if err != nil {
+			log.Printf("weather fetch failed: %v", err)
+			http.Error(w, "failed to fetch weather", http.StatusBadGateway)
+			return
+		}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(forecast)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(forecast)
+	}
 }

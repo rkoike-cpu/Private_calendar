@@ -10,6 +10,7 @@ import (
 	"personal-calendar/internal/auth"
 	"personal-calendar/internal/handler"
 	"personal-calendar/internal/store"
+	"personal-calendar/internal/weather"
 )
 
 // AllowedEmails はGoogleカレンダーへの認証を許可するアカウント。
@@ -47,7 +48,14 @@ func NewRouter() (router http.Handler, cleanup func(), err error) {
 		return nil, nil, fmt.Errorf("init google auth: %w", err)
 	}
 
-	return handler.NewRouter(viewerSvc, googleSvc), func() { appStore.Close() }, nil
+	weatherAPIKey := strings.TrimSpace(os.Getenv("WEATHER_API_KEY"))
+	if weatherAPIKey == "" {
+		appStore.Close()
+		return nil, nil, fmt.Errorf("WEATHER_API_KEY is not set")
+	}
+	weatherSvc := weather.NewService(weatherAPIKey)
+
+	return handler.NewRouter(viewerSvc, googleSvc, weatherSvc), func() { appStore.Close() }, nil
 }
 
 // loadCredentials は環境変数 GOOGLE_OAUTH_CREDENTIALS_JSON (JSON文字列そのもの) を優先し、

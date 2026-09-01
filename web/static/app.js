@@ -520,7 +520,7 @@ function renderWeather(hourly) {
     }
     el.innerHTML = `
       <div class="hour">${pointHour}時</div>
-      <div class="emoji">${weatherEmoji(point.weatherCode)}</div>
+      <div class="emoji">${weatherEmoji(point.condition)}</div>
       <div class="temp">${Math.round(point.tempC)}℃</div>
       <div class="humidity">${Math.round(point.humidityPct)}%</div>
     `;
@@ -528,16 +528,25 @@ function renderWeather(hourly) {
   }
 }
 
-function weatherEmoji(code) {
-  if (code === 0) return "☀️";
-  if ([1, 2, 3].includes(code)) return "⛅";
-  if ([45, 48].includes(code)) return "🌫️";
-  if ([51, 53, 55, 56, 57].includes(code)) return "🌦️";
-  if ([61, 63, 65, 66, 67].includes(code)) return "🌧️";
-  if ([71, 73, 75, 77].includes(code)) return "🌨️";
-  if ([80, 81, 82].includes(code)) return "🌧️";
-  if ([95, 96, 99].includes(code)) return "⛈️";
-  return "❓";
+function weatherEmoji(condition) {
+  switch (condition) {
+    case "clear":
+      return "☀️";
+    case "partly-cloudy":
+      return "⛅";
+    case "cloudy":
+      return "☁️";
+    case "fog":
+      return "🌫️";
+    case "rain":
+      return "🌧️";
+    case "snow":
+      return "🌨️";
+    case "thunder":
+      return "⛈️";
+    default:
+      return "❓";
+  }
 }
 
 // ---------- ポップオーバー ----------
