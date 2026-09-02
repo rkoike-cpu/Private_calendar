@@ -35,7 +35,7 @@ for (const btn of document.querySelectorAll("#view-toggle button")) {
 
 document.getElementById("add-event-btn").addEventListener("click", () => openEventDialog(null));
 document.getElementById("cancel-add-event").addEventListener("click", () => {
-  document.getElementById("add-event-dialog").close();
+  closeAnimatedDialog(document.getElementById("add-event-dialog"));
 });
 document.getElementById("add-event-form").addEventListener("submit", submitEventForm);
 document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
@@ -226,6 +226,28 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// ---------- ダイアログのフェード+拡大縮小アニメーション ----------
+
+function openAnimatedDialog(dialog) {
+  dialog.classList.add("dialog-enter");
+  dialog.showModal();
+  // クラスを付けた直後に外すと1フレームで反映されずアニメーションしないため、
+  // 次の描画フレームまで待ってから外す。
+  requestAnimationFrame(() => {
+    dialog.classList.remove("dialog-enter");
+  });
+}
+
+function closeAnimatedDialog(dialog) {
+  dialog.classList.add("dialog-enter");
+  const onEnd = () => {
+    dialog.removeEventListener("transitionend", onEnd);
+    dialog.close();
+    dialog.classList.remove("dialog-enter");
+  };
+  dialog.addEventListener("transitionend", onEnd);
+}
+
 // ---------- 予定の追加・編集・削除 ----------
 
 // event が null なら新規追加、指定されていれば編集モードでダイアログを開く。
@@ -255,7 +277,7 @@ function openEventDialog(event) {
 
   updateLocationMapLink();
   hideFormError();
-  document.getElementById("add-event-dialog").showModal();
+  openAnimatedDialog(document.getElementById("add-event-dialog"));
 
   // showModal()はブラウザが自動で最初の入力欄(タイトル)へフォーカスを当てるため、
   // スマホではダイアログを開いた瞬間にキーボードが出てしまう。フォーカスを外して防ぐ。
@@ -334,7 +356,7 @@ async function submitNewEvent(summary, location, start, end, category, status) {
   });
 
   allEvents.push(saved);
-  document.getElementById("add-event-dialog").close();
+  closeAnimatedDialog(document.getElementById("add-event-dialog"));
   render();
   status.textContent = categoryRes.ok ? "予定を追加しました" : "予定は追加しましたが、カテゴリの保存に失敗しました";
 }
@@ -374,7 +396,7 @@ async function submitEditingEvent(eventId, summary, location, start, end, catego
     return;
   }
 
-  document.getElementById("add-event-dialog").close();
+  closeAnimatedDialog(document.getElementById("add-event-dialog"));
   status.textContent = categoryRes.ok ? "予定を更新しました" : "予定は更新しましたが、カテゴリの保存に失敗しました";
 }
 
@@ -395,7 +417,7 @@ async function deleteEditingEvent() {
   }
 
   allEvents = allEvents.filter((ev) => ev.ID !== editingEventId);
-  document.getElementById("add-event-dialog").close();
+  closeAnimatedDialog(document.getElementById("add-event-dialog"));
   render();
   status.textContent = "予定を削除しました";
 }
@@ -450,8 +472,32 @@ function changeDate(delta) {
   const { minDate, maxDate } = getDataBounds();
   if (next < minDate || next > maxDate) return;
 
-  currentDate = next;
-  render();
+  animateNavTransition(delta, () => {
+    currentDate = next;
+    render();
+  });
+}
+
+// 前後移動時に、押した方向へスッと抜けて反対側からスッと入ってくる
+// スライドアニメーションを付ける。delta>0(次へ)なら左方向へ抜けて右から入る。
+function animateNavTransition(delta, updateFn) {
+  const container = document.querySelector(".cal-wrapper");
+  const distance = delta > 0 ? -16 : 16;
+
+  container.style.transition = "transform 0.12s ease, opacity 0.12s ease";
+  container.style.transform = `translateX(${distance}px)`;
+  container.style.opacity = "0";
+
+  setTimeout(() => {
+    updateFn();
+
+    container.style.transition = "none";
+    container.style.transform = `translateX(${-distance}px)`;
+    void container.offsetWidth; // 強制的にリフローさせ、直後のtransitionを効かせる
+    container.style.transition = "transform 0.12s ease, opacity 0.12s ease";
+    container.style.transform = "translateX(0)";
+    container.style.opacity = "1";
+  }, 120);
 }
 
 function render() {
