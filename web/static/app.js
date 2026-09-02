@@ -178,7 +178,7 @@ async function submitEventForm(e) {
   submitBtn.disabled = true;
 
   try {
-    const url = isEditing ? `/api/events/${editingEventId}` : "/api/events";
+    const url = isEditing ? `/api/events/${encodeURIComponent(editingEventId)}` : "/api/events";
     const res = await fetch(url, {
       method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,7 +197,7 @@ async function submitEventForm(e) {
     const saved = await res.json();
     saved.Category = category;
 
-    await fetch(`/api/events/${saved.ID}/category`, {
+    const categoryRes = await fetch(`/api/events/${encodeURIComponent(saved.ID)}/category`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category }),
@@ -210,7 +210,11 @@ async function submitEventForm(e) {
     }
     document.getElementById("add-event-dialog").close();
     render();
-    status.textContent = isEditing ? "予定を更新しました" : "予定を追加しました";
+    status.textContent = isEditing
+      ? "予定を更新しました"
+      : categoryRes.ok
+        ? "予定を追加しました"
+        : "予定は追加しましたが、カテゴリの保存に失敗しました";
   } finally {
     submitBtn.disabled = false;
   }
@@ -223,7 +227,7 @@ async function deleteEditingEvent() {
   const status = document.getElementById("status");
   status.textContent = "予定を削除中...";
 
-  const res = await fetch(`/api/events/${editingEventId}`, { method: "DELETE" });
+  const res = await fetch(`/api/events/${encodeURIComponent(editingEventId)}`, { method: "DELETE" });
   if (!res.ok) {
     status.textContent = `削除に失敗しました (status: ${res.status})`;
     return;
