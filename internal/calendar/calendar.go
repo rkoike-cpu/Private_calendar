@@ -16,6 +16,9 @@ type Event struct {
 	Summary string
 	Start   string
 	End     string
+	// Category はこのアプリ独自の色分け用カテゴリ。Googleカレンダー側には存在せず、
+	// internal/store の event_categories から呼び出し側が埋め込む(handler層の責務)。
+	Category string `json:"Category,omitempty"`
 }
 
 // FetchRange は認証済みクライアントを使い、指定期間内の予定を取得する。

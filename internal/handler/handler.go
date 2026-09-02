@@ -32,10 +32,11 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 
 	mux.Handle("GET /", viewerSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
 	mux.HandleFunc("GET /sw.js", serviceWorkerHandler)
-	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc)))
+	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc, appStore)))
 	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
 	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
 	mux.Handle("DELETE /api/events/{id}", viewerSvc.RequireAuth(deleteEventHandler(googleSvc)))
+	mux.Handle("PUT /api/events/{id}/category", viewerSvc.RequireAuth(setEventCategoryHandler(appStore)))
 	mux.Handle("GET /api/weather/today", viewerSvc.RequireAuth(weatherTodayHandler(weatherSvc)))
 	mux.Handle("GET /api/push/vapid-public-key", viewerSvc.RequireAuth(vapidPublicKeyHandler(pushSvc)))
 	mux.Handle("POST /api/push/subscribe", viewerSvc.RequireAuth(pushSubscribeHandler(appStore)))
@@ -77,7 +78,7 @@ func serviceWorkerHandler(w http.ResponseWriter, r *http.Request) {
 // syncGoogleHandler は Google Calendar から最新の予定を取得して返す。
 // 「今月を含む前後1ヶ月(合計3ヶ月分の暦月)」を一度に取得する。
 // 例: 今日が9月なら 8/1 00:00 〜 11/1 00:00(排他)の範囲。
-func syncGoogleHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
+func syncGoogleHandler(googleSvc *auth.GoogleService, appStore *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		client, ok := googleSvc.HTTPClient(r.Context())
 		if !ok {
@@ -94,6 +95,15 @@ func syncGoogleHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, "failed to fetch calendar events", http.StatusBadGateway)
 			return
+		}
+
+		categories, err := appStore.GetEventCategories()
+		if err != nil {
+			http.Error(w, "failed to load categories", http.StatusInternalServerError)
+			return
+		}
+		for i := range events {
+			events[i].Category = categories[events[i].ID]
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -273,6 +283,31 @@ func pushUnsubscribeHandler(appStore *store.Store) http.HandlerFunc {
 
 		if err := appStore.DeletePushSubscription(req.Endpoint); err != nil {
 			http.Error(w, "failed to delete subscription", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+type setEventCategoryRequest struct {
+	Category string `json:"category"`
+}
+
+// setEventCategoryHandler は予定の色分けカテゴリを保存する。このアプリ内だけの
+// 表示に使うもので、実際のGoogleカレンダー本体には反映されない。
+func setEventCategoryHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		eventID := r.PathValue("id")
+
+		var req setEventCategoryRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := appStore.SetEventCategory(eventID, req.Category); err != nil {
+			http.Error(w, "failed to save category", http.StatusInternalServerError)
 			return
 		}
 

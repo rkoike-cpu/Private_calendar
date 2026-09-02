@@ -3,6 +3,20 @@ const GRID_END_HOUR = 22;
 const ROW_HEIGHT = 44; // px per hour, must match --row-height in style.css
 const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
+// 予定の色分けカテゴリ。key="" がデフォルト(未分類)で、これまで通りの青色になる。
+// この色分けはこのアプリの画面表示だけのもので、Googleカレンダー本体には影響しない。
+const CATEGORIES = [
+  { key: "", label: "仕事", color: "#4a86e8" },
+  { key: "personal", label: "プライベート", color: "#34a853" },
+  { key: "important", label: "重要", color: "#e04141" },
+  { key: "travel", label: "移動", color: "#a142f4" },
+];
+
+function categoryColor(key) {
+  const found = CATEGORIES.find((c) => c.key === (key || ""));
+  return found ? found.color : CATEGORIES[0].color;
+}
+
 let allEvents = [];
 let viewMode = "week"; // "day" | "week" | "month"
 let currentDate = startOfDay(new Date()); // 表示の基準日
@@ -27,9 +41,20 @@ document.getElementById("add-event-form").addEventListener("submit", submitEvent
 document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
 document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
 
+initCategorySelect();
 render(); // 初期表示
 loadWeather();
 initNotifyButton();
+
+function initCategorySelect() {
+  const select = document.getElementById("category-select");
+  for (const category of CATEGORIES) {
+    const option = document.createElement("option");
+    option.value = category.key;
+    option.textContent = category.label;
+    select.appendChild(option);
+  }
+}
 
 // ---------- 通知(プッシュ通知) ----------
 
@@ -119,8 +144,10 @@ function openEventDialog(event) {
     form.date.value = formatDateInput(start);
     form.start.value = formatTimeInput(start);
     form.end.value = formatTimeInput(end);
+    form.category.value = event.Category || "";
   } else {
     form.date.value = formatDateInput(currentDate);
+    form.category.value = "";
   }
 
   document.getElementById("add-event-dialog").showModal();
@@ -133,6 +160,7 @@ async function submitEventForm(e) {
   const date = form.date.value;
   const startTime = form.start.value;
   const endTime = form.end.value;
+  const category = form.category.value;
   if (!summary || !date || !startTime || !endTime) return;
 
   const start = new Date(`${date}T${startTime}:00`);
@@ -167,6 +195,14 @@ async function submitEventForm(e) {
     }
 
     const saved = await res.json();
+    saved.Category = category;
+
+    await fetch(`/api/events/${saved.ID}/category`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category }),
+    });
+
     if (isEditing) {
       allEvents = allEvents.map((ev) => (ev.ID === saved.ID ? saved : ev));
     } else {
@@ -460,6 +496,7 @@ function buildEventElement(event, start, end, col = 0, colCount = 1) {
   el.style.height = `${height}px`;
   el.style.left = `calc(${leftPct}% + 2px)`;
   el.style.width = `calc(${widthPct}% - 4px)`;
+  el.style.background = categoryColor(event.Category);
   el.textContent = `${formatTime(start)} ${event.Summary}`;
 
   attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
@@ -525,6 +562,7 @@ function renderMonthView(anchor) {
       const end = new Date(event.End);
       const el = document.createElement("div");
       el.className = "cal-month-event";
+      el.style.background = categoryColor(event.Category);
       el.textContent = `${formatTime(start)} ${event.Summary}`;
       attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
       el.addEventListener("click", () => openEventDialog(event));

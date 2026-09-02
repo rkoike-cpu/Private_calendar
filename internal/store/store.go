@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS sent_reminders (
 	event_id TEXT PRIMARY KEY,
 	sent_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS event_categories (
+	event_id TEXT PRIMARY KEY,
+	category TEXT NOT NULL
+);
 `
 
 // Store はSupabase(Postgres)への永続化を担う。
@@ -182,4 +187,39 @@ func (s *Store) MarkReminderSent(eventID string) error {
 		`INSERT INTO sent_reminders (event_id) VALUES ($1) ON CONFLICT (event_id) DO NOTHING`, eventID,
 	)
 	return err
+}
+
+// SetEventCategory は予定の色分けカテゴリを保存する。このアプリの画面上だけの表示に
+// 使うもので、実際のGoogleカレンダー本体の色には影響しない。category="" の場合は
+// カテゴリ設定を削除する(=デフォルト表示に戻す)。
+func (s *Store) SetEventCategory(eventID, category string) error {
+	if category == "" {
+		_, err := s.db.Exec(`DELETE FROM event_categories WHERE event_id = $1`, eventID)
+		return err
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO event_categories (event_id, category) VALUES ($1, $2)
+		 ON CONFLICT (event_id) DO UPDATE SET category = excluded.category`,
+		eventID, category,
+	)
+	return err
+}
+
+// GetEventCategories は保存済みの全カテゴリ設定を event_id -> category のマップで返す。
+func (s *Store) GetEventCategories() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT event_id, category FROM event_categories`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var id, category string
+		if err := rows.Scan(&id, &category); err != nil {
+			return nil, err
+		}
+		result[id] = category
+	}
+	return result, rows.Err()
 }
