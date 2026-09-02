@@ -31,6 +31,7 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 	mux.Handle("GET /auth/google/callback", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.CallbackHandler)))
 
 	mux.Handle("GET /", viewerSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
+	mux.HandleFunc("GET /sw.js", serviceWorkerHandler)
 	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc)))
 	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
 	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
@@ -57,6 +58,19 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
+// serviceWorkerHandler はService Workerをルート直下(/sw.js)から配信する。
+// ブラウザはService Workerの適用範囲(scope)をそのスクリプトの置き場所以下に
+// 制限するため、ダッシュボード全体(/)に効かせるにはルート直下から配信する必要がある。
+func serviceWorkerHandler(w http.ResponseWriter, r *http.Request) {
+	data, err := webassets.FS.ReadFile("static/sw.js")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Write(data)
 }
 

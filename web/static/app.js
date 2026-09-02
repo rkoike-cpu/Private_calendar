@@ -40,7 +40,7 @@ async function initNotifyButton() {
     return;
   }
 
-  const registration = await navigator.serviceWorker.register("/static/sw.js");
+  const registration = await navigator.serviceWorker.register("/sw.js");
   const existing = await registration.pushManager.getSubscription();
   btn.classList.toggle("active", !!existing);
 }
