@@ -200,6 +200,7 @@ func updateEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 
 		event, err := calendar.UpdateEvent(r.Context(), client, eventID, req.Summary, start, end)
 		if err != nil {
+			log.Printf("update event %q failed: %v", eventID, err)
 			http.Error(w, "failed to update event", http.StatusBadGateway)
 			return
 		}
