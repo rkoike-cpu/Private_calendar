@@ -53,6 +53,10 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 	mux.Handle("GET /api/push/vapid-public-key", viewerSvc.RequireAuth(vapidPublicKeyHandler(pushSvc)))
 	mux.Handle("POST /api/push/subscribe", viewerSvc.RequireAuth(pushSubscribeHandler(appStore)))
 	mux.Handle("POST /api/push/unsubscribe", viewerSvc.RequireAuth(pushUnsubscribeHandler(appStore)))
+	mux.Handle("GET /api/tasks", viewerSvc.RequireAuth(listTasksHandler(appStore)))
+	mux.Handle("POST /api/tasks", viewerSvc.RequireAuth(createTaskHandler(appStore)))
+	mux.Handle("PATCH /api/tasks/{id}", viewerSvc.RequireAuth(updateTaskHandler(appStore)))
+	mux.Handle("DELETE /api/tasks/{id}", viewerSvc.RequireAuth(deleteTaskHandler(appStore)))
 
 	staticFS, err := fs.Sub(webassets.FS, "static")
 	if err != nil {
@@ -341,5 +345,80 @@ func weatherTodayHandler(weatherSvc *weather.Service) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(forecast)
+	}
+}
+
+// listTasksHandler はToDoの一覧を返す。
+func listTasksHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tasks, err := appStore.ListTasks()
+		if err != nil {
+			http.Error(w, "failed to list tasks", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tasks)
+	}
+}
+
+type createTaskRequest struct {
+	Title   string `json:"title"`
+	DueDate string `json:"dueDate"` // "YYYY-MM-DD"、任意
+}
+
+// createTaskHandler はToDoを新規作成する。
+func createTaskHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req createTaskRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.Title == "" {
+			http.Error(w, "title is required", http.StatusBadRequest)
+			return
+		}
+
+		task, err := appStore.CreateTask(req.Title, req.DueDate)
+		if err != nil {
+			http.Error(w, "failed to create task", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(task)
+	}
+}
+
+type updateTaskRequest struct {
+	Done bool `json:"done"`
+}
+
+// updateTaskHandler はToDoの完了状態を更新する。
+func updateTaskHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req updateTaskRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := appStore.SetTaskDone(r.PathValue("id"), req.Done); err != nil {
+			http.Error(w, "failed to update task", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// deleteTaskHandler はToDoを削除する。
+func deleteTaskHandler(appStore *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := appStore.DeleteTask(r.PathValue("id")); err != nil {
+			http.Error(w, "failed to delete task", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

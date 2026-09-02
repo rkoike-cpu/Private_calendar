@@ -40,11 +40,94 @@ document.getElementById("cancel-add-event").addEventListener("click", () => {
 document.getElementById("add-event-form").addEventListener("submit", submitEventForm);
 document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
 document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
+document.getElementById("todo-form").addEventListener("submit", submitTodo);
 
 initCategorySelect();
 render(); // 初期表示
 loadWeather();
 initNotifyButton();
+loadTasks();
+
+// ---------- ToDo ----------
+
+async function loadTasks() {
+  const res = await fetch("/api/tasks");
+  if (!res.ok) return;
+  const tasks = await res.json();
+  renderTasks(tasks || []);
+}
+
+function renderTasks(tasks) {
+  const list = document.getElementById("todo-list");
+  list.innerHTML = "";
+
+  for (const task of tasks) {
+    const li = document.createElement("li");
+    li.className = "todo-item" + (task.Done ? " done" : "");
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = task.Done;
+    checkbox.addEventListener("change", () => toggleTaskDone(task.ID, checkbox.checked));
+
+    const title = document.createElement("span");
+    title.className = "todo-title";
+    title.textContent = task.Title;
+
+    li.appendChild(checkbox);
+    li.appendChild(title);
+
+    if (task.DueDate) {
+      const due = document.createElement("span");
+      due.className = "todo-due";
+      due.textContent = task.DueDate;
+      li.appendChild(due);
+    }
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "todo-delete";
+    deleteBtn.textContent = "✕";
+    deleteBtn.addEventListener("click", () => deleteTask(task.ID));
+    li.appendChild(deleteBtn);
+
+    list.appendChild(li);
+  }
+}
+
+async function submitTodo(e) {
+  e.preventDefault();
+  const titleInput = document.getElementById("todo-title");
+  const dueInput = document.getElementById("todo-due");
+
+  const title = titleInput.value.trim();
+  if (!title) return;
+
+  const res = await fetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, dueDate: dueInput.value }),
+  });
+  if (!res.ok) return;
+
+  titleInput.value = "";
+  dueInput.value = "";
+  loadTasks();
+}
+
+async function toggleTaskDone(id, done) {
+  await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ done }),
+  });
+  loadTasks();
+}
+
+async function deleteTask(id) {
+  await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+  loadTasks();
+}
 
 function initCategorySelect() {
   const select = document.getElementById("category-select");

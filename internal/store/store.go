@@ -1,7 +1,9 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -42,6 +44,14 @@ CREATE TABLE IF NOT EXISTS sent_reminders (
 CREATE TABLE IF NOT EXISTS event_categories (
 	event_id TEXT PRIMARY KEY,
 	category TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+	id         TEXT PRIMARY KEY,
+	title      TEXT NOT NULL,
+	due_date   DATE,
+	done       BOOLEAN NOT NULL DEFAULT false,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `
 
@@ -222,4 +232,77 @@ func (s *Store) GetEventCategories() (map[string]string, error) {
 		result[id] = category
 	}
 	return result, rows.Err()
+}
+
+// Task はGoogleカレンダーとは無関係な、このアプリ独自のToDo項目。
+type Task struct {
+	ID      string
+	Title   string
+	DueDate string // "YYYY-MM-DD" 形式。無ければ空文字。
+	Done    bool
+}
+
+// CreateTask は新しいタスクを作成する。dueDate は "YYYY-MM-DD" 形式、無ければ空文字。
+func (s *Store) CreateTask(title, dueDate string) (Task, error) {
+	id, err := newID()
+	if err != nil {
+		return Task{}, err
+	}
+
+	var due any
+	if dueDate != "" {
+		due = dueDate
+	}
+
+	_, err = s.db.Exec(
+		`INSERT INTO tasks (id, title, due_date) VALUES ($1, $2, $3)`,
+		id, title, due,
+	)
+	if err != nil {
+		return Task{}, err
+	}
+
+	return Task{ID: id, Title: title, DueDate: dueDate}, nil
+}
+
+// ListTasks は未完了のタスクを期限順、完了済みのタスクを後ろに並べて返す。
+func (s *Store) ListTasks() ([]Task, error) {
+	rows, err := s.db.Query(
+		`SELECT id, title, COALESCE(due_date::text, ''), done FROM tasks
+		 ORDER BY done ASC, due_date NULLS LAST, created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []Task
+	for rows.Next() {
+		var t Task
+		if err := rows.Scan(&t.ID, &t.Title, &t.DueDate, &t.Done); err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// SetTaskDone はタスクの完了状態を更新する。
+func (s *Store) SetTaskDone(id string, done bool) error {
+	_, err := s.db.Exec(`UPDATE tasks SET done = $1 WHERE id = $2`, done, id)
+	return err
+}
+
+// DeleteTask はタスクを削除する。
+func (s *Store) DeleteTask(id string) error {
+	_, err := s.db.Exec(`DELETE FROM tasks WHERE id = $1`, id)
+	return err
+}
+
+func newID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
