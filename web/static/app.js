@@ -63,6 +63,10 @@ loadWeather();
 initNotifyButton();
 loadTasks();
 
+// 現在時刻を示す赤い線は再描画時にしか更新されないため、
+// 何も操作しなくても実際の時刻に追従するよう1分ごとに再描画する。
+setInterval(render, 60 * 1000);
+
 // ---------- ToDo ----------
 
 async function loadTasks() {
