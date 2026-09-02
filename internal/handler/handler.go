@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"google.golang.org/api/googleapi"
+
 	"personal-calendar/internal/auth"
 	"personal-calendar/internal/calendar"
 	"personal-calendar/internal/push"
@@ -14,6 +16,16 @@ import (
 	"personal-calendar/internal/weather"
 	webassets "personal-calendar/web"
 )
+
+// writeCalendarError はGoogle Calendar APIのエラーを見て、可能であれば
+// ユーザーに分かりやすいメッセージを返す。
+func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
+	if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == http.StatusForbidden {
+		http.Error(w, "この予定はあなたが主催者ではないため変更できません(Googleカレンダーの仕様)", http.StatusForbidden)
+		return
+	}
+	http.Error(w, fallback, http.StatusBadGateway)
+}
 
 // NewRouter は本アプリの全HTTPルーティングを構築する。
 //
@@ -201,7 +213,7 @@ func updateEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 		event, err := calendar.UpdateEvent(r.Context(), client, eventID, req.Summary, start, end)
 		if err != nil {
 			log.Printf("update event %q failed: %v", eventID, err)
-			http.Error(w, "failed to update event", http.StatusBadGateway)
+			writeCalendarError(w, err, "failed to update event")
 			return
 		}
 
@@ -222,7 +234,8 @@ func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 		eventID := r.PathValue("id")
 
 		if err := calendar.DeleteEvent(r.Context(), client, eventID); err != nil {
-			http.Error(w, "failed to delete event", http.StatusBadGateway)
+			log.Printf("delete event %q failed: %v", eventID, err)
+			writeCalendarError(w, err, "failed to delete event")
 			return
 		}
 

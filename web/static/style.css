@@ -74,6 +74,12 @@ dialog#add-event-dialog input {
   border-radius: 4px;
 }
 
+#event-form-error {
+  color: #e04141;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
 dialog#add-event-dialog menu {
   display: flex;
   justify-content: flex-end;

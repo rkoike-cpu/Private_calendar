@@ -150,7 +150,19 @@ function openEventDialog(event) {
     form.category.value = "";
   }
 
+  hideFormError();
   document.getElementById("add-event-dialog").showModal();
+}
+
+function showFormError(message) {
+  const el = document.getElementById("event-form-error");
+  el.textContent = message;
+  el.hidden = false;
+}
+
+function hideFormError() {
+  const el = document.getElementById("event-form-error");
+  el.hidden = true;
 }
 
 async function submitEventForm(e) {
@@ -173,51 +185,88 @@ async function submitEventForm(e) {
   const status = document.getElementById("status");
   const isEditing = editingEventId !== null;
   status.textContent = isEditing ? "予定を更新中..." : "予定を追加中...";
+  hideFormError();
 
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
 
   try {
-    const url = isEditing ? `/api/events/${encodeURIComponent(editingEventId)}` : "/api/events";
-    const res = await fetch(url, {
-      method: isEditing ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        summary,
-        start: start.toISOString(),
-        end: end.toISOString(),
-      }),
-    });
-
-    if (!res.ok) {
-      status.textContent = `${isEditing ? "更新" : "追加"}に失敗しました (status: ${res.status})`;
-      return;
-    }
-
-    const saved = await res.json();
-    saved.Category = category;
-
-    const categoryRes = await fetch(`/api/events/${encodeURIComponent(saved.ID)}/category`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category }),
-    });
-
     if (isEditing) {
-      allEvents = allEvents.map((ev) => (ev.ID === saved.ID ? saved : ev));
+      await submitEditingEvent(editingEventId, summary, start, end, category, status);
     } else {
-      allEvents.push(saved);
+      await submitNewEvent(summary, start, end, category, status);
     }
-    document.getElementById("add-event-dialog").close();
-    render();
-    status.textContent = isEditing
-      ? "予定を更新しました"
-      : categoryRes.ok
-        ? "予定を追加しました"
-        : "予定は追加しましたが、カテゴリの保存に失敗しました";
   } finally {
     submitBtn.disabled = false;
   }
+}
+
+async function submitNewEvent(summary, start, end, category, status) {
+  const res = await fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ summary, start: start.toISOString(), end: end.toISOString() }),
+  });
+
+  if (!res.ok) {
+    const message = await res.text();
+    showFormError(message || `追加に失敗しました (status: ${res.status})`);
+    status.textContent = "";
+    return;
+  }
+
+  const saved = await res.json();
+  saved.Category = category;
+
+  const categoryRes = await fetch(`/api/events/${encodeURIComponent(saved.ID)}/category`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category }),
+  });
+
+  allEvents.push(saved);
+  document.getElementById("add-event-dialog").close();
+  render();
+  status.textContent = categoryRes.ok ? "予定を追加しました" : "予定は追加しましたが、カテゴリの保存に失敗しました";
+}
+
+// 色分け(カテゴリ)はこのアプリ内だけの情報でGoogle側に影響しないため、
+// 件名・時間の更新が(主催者でない等の理由で)失敗しても、色の変更だけは必ず試みる。
+async function submitEditingEvent(eventId, summary, start, end, category, status) {
+  const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ summary, start: start.toISOString(), end: end.toISOString() }),
+  });
+
+  let saved = null;
+  let updateFailedMessage = null;
+  if (res.ok) {
+    saved = await res.json();
+  } else {
+    updateFailedMessage = (await res.text()) || `更新に失敗しました (status: ${res.status})`;
+  }
+
+  const categoryRes = await fetch(`/api/events/${encodeURIComponent(eventId)}/category`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category }),
+  });
+
+  allEvents = allEvents.map((ev) => {
+    if (ev.ID !== eventId) return ev;
+    return saved ? { ...saved, Category: category } : { ...ev, Category: category };
+  });
+  render();
+
+  if (updateFailedMessage) {
+    showFormError(`${updateFailedMessage}(色の変更は${categoryRes.ok ? "反映しました" : "失敗しました"})`);
+    status.textContent = "";
+    return;
+  }
+
+  document.getElementById("add-event-dialog").close();
+  status.textContent = categoryRes.ok ? "予定を更新しました" : "予定は更新しましたが、カテゴリの保存に失敗しました";
 }
 
 async function deleteEditingEvent() {
@@ -226,10 +275,13 @@ async function deleteEditingEvent() {
 
   const status = document.getElementById("status");
   status.textContent = "予定を削除中...";
+  hideFormError();
 
   const res = await fetch(`/api/events/${encodeURIComponent(editingEventId)}`, { method: "DELETE" });
   if (!res.ok) {
-    status.textContent = `削除に失敗しました (status: ${res.status})`;
+    const message = await res.text();
+    showFormError(message || `削除に失敗しました (status: ${res.status})`);
+    status.textContent = "";
     return;
   }
 
