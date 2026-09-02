@@ -252,6 +252,10 @@ function openEventDialog(event) {
   updateLocationMapLink();
   hideFormError();
   document.getElementById("add-event-dialog").showModal();
+
+  // showModal()はブラウザが自動で最初の入力欄(タイトル)へフォーカスを当てるため、
+  // スマホではダイアログを開いた瞬間にキーボードが出てしまう。フォーカスを外して防ぐ。
+  document.activeElement?.blur();
 }
 
 function showFormError(message) {
