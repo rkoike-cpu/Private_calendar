@@ -229,23 +229,48 @@ function urlBase64ToUint8Array(base64String) {
 // ---------- ダイアログのフェード+拡大縮小アニメーション ----------
 
 function openAnimatedDialog(dialog) {
+  clearPendingDialogClose(dialog);
   dialog.classList.add("dialog-enter");
   dialog.showModal();
   // クラスを付けた直後に外すと1フレームで反映されずアニメーションしないため、
   // 次の描画フレームまで待ってから外す。
   requestAnimationFrame(() => {
-    dialog.classList.remove("dialog-enter");
+    requestAnimationFrame(() => {
+      dialog.classList.remove("dialog-enter");
+    });
   });
 }
 
 function closeAnimatedDialog(dialog) {
+  if (!dialog.open) return;
+  clearPendingDialogClose(dialog);
   dialog.classList.add("dialog-enter");
-  const onEnd = () => {
-    dialog.removeEventListener("transitionend", onEnd);
+
+  const finish = () => {
+    clearPendingDialogClose(dialog);
     dialog.close();
     dialog.classList.remove("dialog-enter");
   };
+  const onEnd = (event) => {
+    if (event.target === dialog) finish();
+  };
   dialog.addEventListener("transitionend", onEnd);
+
+  // 何らかの理由でtransitionendが発火しなくても(開閉が連続した場合の競合などで
+  // アニメーションのプロパティが変化しないケースがある)、必ず閉じられるようにする保険。
+  dialog._closeTimer = setTimeout(finish, 250);
+  dialog._closeCleanup = () => dialog.removeEventListener("transitionend", onEnd);
+}
+
+function clearPendingDialogClose(dialog) {
+  if (dialog._closeTimer) {
+    clearTimeout(dialog._closeTimer);
+    dialog._closeTimer = null;
+  }
+  if (dialog._closeCleanup) {
+    dialog._closeCleanup();
+    dialog._closeCleanup = null;
+  }
 }
 
 // ---------- 予定の追加・編集・削除 ----------
