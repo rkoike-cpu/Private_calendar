@@ -385,6 +385,19 @@ button {
   font-size: 0.8rem;
 }
 
+.event-popover .popover-location {
+  color: #666;
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.location-map-link {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: #4a86e8;
+  text-decoration: none;
+}
+
 .cal-now-line {
   position: absolute;
   left: 0;

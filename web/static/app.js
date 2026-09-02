@@ -41,6 +41,21 @@ document.getElementById("add-event-form").addEventListener("submit", submitEvent
 document.getElementById("delete-event-btn").addEventListener("click", deleteEditingEvent);
 document.getElementById("notify-btn").addEventListener("click", toggleNotifications);
 document.getElementById("todo-form").addEventListener("submit", submitTodo);
+document.getElementById("add-event-form").location.addEventListener("input", updateLocationMapLink);
+
+// 場所の入力内容に応じて、Googleマップで検索するリンクの表示・リンク先を更新する。
+// APIキー不要のシンプルな検索URLを使うので、地図の埋め込みや経路検索はできないが、
+// タップすればGoogleマップアプリが開く。
+function updateLocationMapLink() {
+  const location = document.getElementById("add-event-form").location.value.trim();
+  const link = document.getElementById("location-map-link");
+  if (!location) {
+    link.hidden = true;
+    return;
+  }
+  link.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  link.hidden = false;
+}
 
 initCategorySelect();
 render(); // 初期表示
@@ -227,12 +242,14 @@ function openEventDialog(event) {
     form.date.value = formatDateInput(start);
     form.start.value = formatTimeInput(start);
     form.end.value = formatTimeInput(end);
+    form.location.value = event.Location || "";
     form.category.value = event.Category || "";
   } else {
     form.date.value = formatDateInput(currentDate);
     form.category.value = "";
   }
 
+  updateLocationMapLink();
   hideFormError();
   document.getElementById("add-event-dialog").showModal();
 }
@@ -256,6 +273,7 @@ async function submitEventForm(e) {
   const startTime = form.start.value;
   const endTime = form.end.value;
   const category = form.category.value;
+  const location = form.location.value.trim();
   if (!summary || !date || !startTime || !endTime) return;
 
   const start = new Date(`${date}T${startTime}:00`);
@@ -275,20 +293,20 @@ async function submitEventForm(e) {
 
   try {
     if (isEditing) {
-      await submitEditingEvent(editingEventId, summary, start, end, category, status);
+      await submitEditingEvent(editingEventId, summary, location, start, end, category, status);
     } else {
-      await submitNewEvent(summary, start, end, category, status);
+      await submitNewEvent(summary, location, start, end, category, status);
     }
   } finally {
     submitBtn.disabled = false;
   }
 }
 
-async function submitNewEvent(summary, start, end, category, status) {
+async function submitNewEvent(summary, location, start, end, category, status) {
   const res = await fetch("/api/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ summary, start: start.toISOString(), end: end.toISOString() }),
+    body: JSON.stringify({ summary, location, start: start.toISOString(), end: end.toISOString() }),
   });
 
   if (!res.ok) {
@@ -315,11 +333,11 @@ async function submitNewEvent(summary, start, end, category, status) {
 
 // 色分け(カテゴリ)はこのアプリ内だけの情報でGoogle側に影響しないため、
 // 件名・時間の更新が(主催者でない等の理由で)失敗しても、色の変更だけは必ず試みる。
-async function submitEditingEvent(eventId, summary, start, end, category, status) {
+async function submitEditingEvent(eventId, summary, location, start, end, category, status) {
   const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ summary, start: start.toISOString(), end: end.toISOString() }),
+    body: JSON.stringify({ summary, location, start: start.toISOString(), end: end.toISOString() }),
   });
 
   let saved = null;
@@ -638,7 +656,7 @@ function buildEventElement(event, start, end, col = 0, colCount = 1) {
   el.style.background = categoryColor(event.Category);
   el.textContent = `${formatTime(start)} ${event.Summary}`;
 
-  attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
+  attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`, event.Location);
   el.addEventListener("click", () => openEventDialog(event));
 
   return el;
@@ -703,7 +721,7 @@ function renderMonthView(anchor) {
       el.className = "cal-month-event";
       el.style.background = categoryColor(event.Category);
       el.textContent = `${formatTime(start)} ${event.Summary}`;
-      attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`);
+      attachPopover(el, event.Summary, `${formatTime(start)}〜${formatTime(end)}`, event.Location);
       el.addEventListener("click", () => openEventDialog(event));
       cell.appendChild(el);
     }
@@ -798,16 +816,25 @@ function weatherEmoji(condition) {
 
 // ---------- ポップオーバー ----------
 
-// 要素にカーソルを乗せると、件名・時間を拡大表示するポップオーバーを出す。
-function attachPopover(el, title, timeText) {
-  el.addEventListener("mouseenter", () => showEventPopover(el, title, timeText));
+// 要素にカーソルを乗せると、件名・時間・場所を拡大表示するポップオーバーを出す。
+function attachPopover(el, title, timeText, location) {
+  el.addEventListener("mouseenter", () => showEventPopover(el, title, timeText, location));
   el.addEventListener("mouseleave", hideEventPopover);
 }
 
-function showEventPopover(anchorEl, title, timeText) {
+function showEventPopover(anchorEl, title, timeText, location) {
   const popover = document.getElementById("event-popover");
   popover.querySelector(".popover-title").textContent = title;
   popover.querySelector(".popover-time").textContent = timeText;
+
+  const locationEl = popover.querySelector(".popover-location");
+  if (location) {
+    locationEl.textContent = `📍 ${location}`;
+    locationEl.hidden = false;
+  } else {
+    locationEl.hidden = true;
+  }
+
   popover.hidden = false;
 
   const rect = anchorEl.getBoundingClientRect();

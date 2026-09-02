@@ -12,10 +12,11 @@ import (
 // Event はアプリ内で扱う予定の共通表現。
 // 将来Outlookを追加する際も、この形に変換して同じように扱う想定。
 type Event struct {
-	ID      string
-	Summary string
-	Start   string
-	End     string
+	ID       string
+	Summary  string
+	Start    string
+	End      string
+	Location string `json:"Location,omitempty"`
 	// Category はこのアプリ独自の色分け用カテゴリ。Googleカレンダー側には存在せず、
 	// internal/store の event_categories から呼び出し側が埋め込む(handler層の責務)。
 	Category string `json:"Category,omitempty"`
@@ -58,10 +59,11 @@ func FetchRange(ctx context.Context, client *http.Client, from, to time.Time) ([
 			}
 
 			events = append(events, Event{
-				ID:      item.Id,
-				Summary: item.Summary,
-				Start:   item.Start.DateTime,
-				End:     item.End.DateTime,
+				ID:       item.Id,
+				Summary:  item.Summary,
+				Start:    item.Start.DateTime,
+				End:      item.End.DateTime,
+				Location: item.Location,
 			})
 		}
 
@@ -74,17 +76,18 @@ func FetchRange(ctx context.Context, client *http.Client, from, to time.Time) ([
 	return events, nil
 }
 
-// CreateEvent は指定した内容でGoogleカレンダーに新しい予定を作成する。
-func CreateEvent(ctx context.Context, client *http.Client, summary string, start, end time.Time) (*Event, error) {
+// CreateEvent は指定した内容でGoogleカレンダーに新しい予定を作成する。location は空文字でよい。
+func CreateEvent(ctx context.Context, client *http.Client, summary, location string, start, end time.Time) (*Event, error) {
 	srv, err := googlecalendar.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
 	event := &googlecalendar.Event{
-		Summary: summary,
-		Start:   &googlecalendar.EventDateTime{DateTime: start.Format(time.RFC3339)},
-		End:     &googlecalendar.EventDateTime{DateTime: end.Format(time.RFC3339)},
+		Summary:  summary,
+		Location: location,
+		Start:    &googlecalendar.EventDateTime{DateTime: start.Format(time.RFC3339)},
+		End:      &googlecalendar.EventDateTime{DateTime: end.Format(time.RFC3339)},
 	}
 
 	created, err := srv.Events.Insert("primary", event).Do()
@@ -93,24 +96,26 @@ func CreateEvent(ctx context.Context, client *http.Client, summary string, start
 	}
 
 	return &Event{
-		ID:      created.Id,
-		Summary: created.Summary,
-		Start:   created.Start.DateTime,
-		End:     created.End.DateTime,
+		ID:       created.Id,
+		Summary:  created.Summary,
+		Start:    created.Start.DateTime,
+		End:      created.End.DateTime,
+		Location: created.Location,
 	}, nil
 }
 
-// UpdateEvent は既存の予定の内容を書き換える。
-func UpdateEvent(ctx context.Context, client *http.Client, eventID, summary string, start, end time.Time) (*Event, error) {
+// UpdateEvent は既存の予定の内容を書き換える。location は空文字でよい。
+func UpdateEvent(ctx context.Context, client *http.Client, eventID, summary, location string, start, end time.Time) (*Event, error) {
 	srv, err := googlecalendar.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
 	event := &googlecalendar.Event{
-		Summary: summary,
-		Start:   &googlecalendar.EventDateTime{DateTime: start.Format(time.RFC3339)},
-		End:     &googlecalendar.EventDateTime{DateTime: end.Format(time.RFC3339)},
+		Summary:  summary,
+		Location: location,
+		Start:    &googlecalendar.EventDateTime{DateTime: start.Format(time.RFC3339)},
+		End:      &googlecalendar.EventDateTime{DateTime: end.Format(time.RFC3339)},
 	}
 
 	updated, err := srv.Events.Update("primary", eventID, event).Do()
@@ -119,10 +124,11 @@ func UpdateEvent(ctx context.Context, client *http.Client, eventID, summary stri
 	}
 
 	return &Event{
-		ID:      updated.Id,
-		Summary: updated.Summary,
-		Start:   updated.Start.DateTime,
-		End:     updated.End.DateTime,
+		ID:       updated.Id,
+		Summary:  updated.Summary,
+		Start:    updated.Start.DateTime,
+		End:      updated.End.DateTime,
+		Location: updated.Location,
 	}, nil
 }
 

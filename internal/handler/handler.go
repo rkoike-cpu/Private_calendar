@@ -128,9 +128,10 @@ func syncGoogleHandler(googleSvc *auth.GoogleService, appStore *store.Store) htt
 }
 
 type createEventRequest struct {
-	Summary string `json:"summary"`
-	Start   string `json:"start"` // RFC3339
-	End     string `json:"end"`   // RFC3339
+	Summary  string `json:"summary"`
+	Location string `json:"location"`
+	Start    string `json:"start"` // RFC3339
+	End      string `json:"end"`   // RFC3339
 }
 
 // createEventHandler はGoogleカレンダーに新しい予定を作成する。
@@ -167,7 +168,7 @@ func createEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 			return
 		}
 
-		event, err := calendar.CreateEvent(r.Context(), client, req.Summary, start, end)
+		event, err := calendar.CreateEvent(r.Context(), client, req.Summary, req.Location, start, end)
 		if err != nil {
 			http.Error(w, "failed to create event", http.StatusBadGateway)
 			return
@@ -214,7 +215,7 @@ func updateEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 			return
 		}
 
-		event, err := calendar.UpdateEvent(r.Context(), client, eventID, req.Summary, start, end)
+		event, err := calendar.UpdateEvent(r.Context(), client, eventID, req.Summary, req.Location, start, end)
 		if err != nil {
 			log.Printf("update event %q failed: %v", eventID, err)
 			writeCalendarError(w, err, "failed to update event")

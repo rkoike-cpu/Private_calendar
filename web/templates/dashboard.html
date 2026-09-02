@@ -45,6 +45,11 @@
         <input type="time" name="end" required />
       </label>
       <label>
+        場所
+        <input type="text" name="location" placeholder="例: 東京駅" />
+      </label>
+      <a id="location-map-link" class="location-map-link" href="#" target="_blank" rel="noopener" hidden>📍地図で見る</a>
+      <label>
         カテゴリ
         <select name="category" id="category-select"></select>
       </label>
@@ -100,6 +105,7 @@
   <div id="event-popover" class="event-popover" hidden>
     <div class="popover-title"></div>
     <div class="popover-time"></div>
+    <div class="popover-location" hidden></div>
   </div>
 
   <script src="/static/app.js"></script>
