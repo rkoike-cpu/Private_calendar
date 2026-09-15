@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"golang.org/x/oauth2"
@@ -91,7 +92,9 @@ func (s *GoogleService) CallbackHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<p>Googleカレンダーとの連携が完了しました(%s)。</p><p><a href="/">ダッシュボードに戻る</a></p>`, email)
+	if _, err := fmt.Fprintf(w, `<p>Googleカレンダーとの連携が完了しました(%s)。</p><p><a href="/">ダッシュボードに戻る</a></p>`, email); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 // HTTPClient は、サーバーが保持している共有のGoogle認証情報を使い、
@@ -110,7 +113,11 @@ func fetchEmail(ctx context.Context, config *oauth2.Config, token *oauth2.Token)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	var info struct {
 		Email string `json:"email"`

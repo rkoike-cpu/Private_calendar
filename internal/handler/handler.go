@@ -17,6 +17,15 @@ import (
 	webassets "personal-calendar/web"
 )
 
+// writeJSON はレスポンスをJSONとして書き出す。書き込み失敗はクライアントが
+// 切断した場合などに起こり得るが、この時点でステータスコードは既に送信済みのため、
+// ログに残す以上の対処はできない。
+func writeJSON(w http.ResponseWriter, v any) {
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("failed to write JSON response: %v", err)
+	}
+}
+
 // writeCalendarError はGoogle Calendar APIのエラーを見て、可能であれば
 // ユーザーに分かりやすいメッセージを返す。
 func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
@@ -75,7 +84,9 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 // serviceWorkerHandler はService Workerをルート直下(/sw.js)から配信する。
@@ -88,7 +99,9 @@ func serviceWorkerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 // syncGoogleHandler は Google Calendar から最新の予定を取得して返す。
@@ -123,7 +136,7 @@ func syncGoogleHandler(googleSvc *auth.GoogleService, appStore *store.Store) htt
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(events)
+		writeJSON(w, events)
 	}
 }
 
@@ -175,7 +188,7 @@ func createEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(event)
+		writeJSON(w, event)
 	}
 }
 
@@ -223,7 +236,7 @@ func updateEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(event)
+		writeJSON(w, event)
 	}
 }
 
@@ -253,7 +266,7 @@ func deleteEventHandler(googleSvc *auth.GoogleService) http.HandlerFunc {
 func vapidPublicKeyHandler(pushSvc *push.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"publicKey": pushSvc.PublicKey()})
+		writeJSON(w, map[string]string{"publicKey": pushSvc.PublicKey()})
 	}
 }
 
@@ -345,7 +358,7 @@ func weatherTodayHandler(weatherSvc *weather.Service) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(forecast)
+		writeJSON(w, forecast)
 	}
 }
 
@@ -358,7 +371,7 @@ func listTasksHandler(appStore *store.Store) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tasks)
+		writeJSON(w, tasks)
 	}
 }
 
@@ -387,7 +400,7 @@ func createTaskHandler(appStore *store.Store) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(task)
+		writeJSON(w, task)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -75,7 +76,11 @@ func (s *Service) FetchToday(ctx context.Context) (*Forecast, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -121,7 +126,8 @@ func categorize(code int) string {
 		return "snow"
 	case code == 1087 || (code >= 1273 && code <= 1282):
 		return "thunder"
-	case (code >= 1063 && code <= 1201) || (code >= 1240 && code <= 1246):
+	case (code >= 1063 && code <= 1207) || (code >= 1240 && code <= 1252):
+		// みぞれ(1204/1207/1249/1252)も、雨に近い状態として扱う。
 		return "rain"
 	default:
 		return "unknown"

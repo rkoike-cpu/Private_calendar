@@ -4,6 +4,7 @@ package push
 
 import (
 	"encoding/json"
+	"log"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -59,7 +60,11 @@ func (s *Service) Send(sub Subscription, title, body string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("failed to close response body: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode == 404 || resp.StatusCode == 410 {
 		return ErrSubscriptionExpired

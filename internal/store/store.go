@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"log"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -75,7 +76,9 @@ func Open(connString string) (*Store, error) {
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("failed to close db after schema init failure: %v", cerr)
+		}
 		return nil, err
 	}
 
@@ -169,7 +172,11 @@ func (s *Store) ListPushSubscriptions() ([]PushSubscription, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			log.Printf("failed to close rows: %v", cerr)
+		}
+	}()
 
 	var subs []PushSubscription
 	for rows.Next() {
@@ -221,7 +228,11 @@ func (s *Store) GetEventCategories() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			log.Printf("failed to close rows: %v", cerr)
+		}
+	}()
 
 	result := make(map[string]string)
 	for rows.Next() {
@@ -274,7 +285,11 @@ func (s *Store) ListTasks() ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			log.Printf("failed to close rows: %v", cerr)
+		}
+	}()
 
 	var tasks []Task
 	for rows.Next() {

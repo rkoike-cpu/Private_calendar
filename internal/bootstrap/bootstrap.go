@@ -3,6 +3,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -50,7 +51,7 @@ func New() (*App, error) {
 
 	appPassword := strings.TrimSpace(os.Getenv("APP_PASSWORD"))
 	if appPassword == "" {
-		appStore.Close()
+		closeQuietly(appStore)
 		return nil, fmt.Errorf("APP_PASSWORD is not set")
 	}
 	viewerSvc := auth.NewViewerService(appPassword, appStore)
@@ -59,13 +60,13 @@ func New() (*App, error) {
 
 	googleSvc, err := auth.NewGoogleService(credentialsJSON, AllowedEmails, appStore, redirectURL)
 	if err != nil {
-		appStore.Close()
+		closeQuietly(appStore)
 		return nil, fmt.Errorf("init google auth: %w", err)
 	}
 
 	weatherAPIKey := strings.TrimSpace(os.Getenv("WEATHER_API_KEY"))
 	if weatherAPIKey == "" {
-		appStore.Close()
+		closeQuietly(appStore)
 		return nil, fmt.Errorf("WEATHER_API_KEY is not set")
 	}
 	weatherSvc := weather.NewService(weatherAPIKey)
@@ -73,7 +74,7 @@ func New() (*App, error) {
 	vapidPublicKey := strings.TrimSpace(os.Getenv("VAPID_PUBLIC_KEY"))
 	vapidPrivateKey := strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY"))
 	if vapidPublicKey == "" || vapidPrivateKey == "" {
-		appStore.Close()
+		closeQuietly(appStore)
 		return nil, fmt.Errorf("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY is not set")
 	}
 	pushSubject := strings.TrimSpace(os.Getenv("VAPID_SUBJECT"))
@@ -90,6 +91,14 @@ func New() (*App, error) {
 		PushSvc:   pushSvc,
 		Store:     appStore,
 	}, nil
+}
+
+// closeQuietly は、初期化失敗時の後片付けでStoreを閉じる。
+// この時点で返すべきエラーは既に確定しているため、Close自体のエラーはログにのみ残す。
+func closeQuietly(appStore *store.Store) {
+	if err := appStore.Close(); err != nil {
+		log.Printf("failed to close store: %v", err)
+	}
 }
 
 // loadCredentials は環境変数 GOOGLE_OAUTH_CREDENTIALS_JSON (JSON文字列そのもの) を優先し、

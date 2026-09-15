@@ -20,7 +20,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize app: %v", err)
 	}
-	defer app.Close()
+	defer func() {
+		if err := app.Close(); err != nil {
+			log.Printf("failed to close app: %v", err)
+		}
+	}()
 
 	go reminder.Run(context.Background(), app.GoogleSvc, app.PushSvc, app.Store)
 

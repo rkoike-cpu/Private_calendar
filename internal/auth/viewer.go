@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -33,7 +34,9 @@ func NewViewerService(password string, store ViewerStore) *ViewerService {
 // LoginPageHandler は合言葉入力フォームを表示する。
 func (s *ViewerService) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, loginPageHTML)
+	if _, err := fmt.Fprint(w, loginPageHTML); err != nil {
+		log.Printf("failed to write response: %v", err)
+	}
 }
 
 // LoginHandler は合言葉を確認し、正しければ長期間有効なセッションCookieを発行する。
