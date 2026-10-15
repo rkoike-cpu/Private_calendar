@@ -22,6 +22,11 @@ func (f *fakeViewerStore) SaveViewerSession(id string) error {
 	return nil
 }
 
+func (f *fakeViewerStore) DeleteViewerSession(id string) error {
+	delete(f.sessions, id)
+	return nil
+}
+
 func (f *fakeViewerStore) ViewerSessionExists(id string) (bool, error) {
 	return f.sessions[id], nil
 }
@@ -114,5 +119,61 @@ func TestRequireAuth_ValidSessionPassesThrough(t *testing.T) {
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestLogoutHandler_ClearsSessionAndCookie(t *testing.T) {
+	store := newFakeViewerStore()
+	store.sessions["valid-session-id"] = true
+	svc := NewViewerService("correct-horse", store)
+
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.AddCookie(&http.Cookie{Name: viewerCookieName, Value: "valid-session-id"})
+	rec := httptest.NewRecorder()
+
+	svc.LogoutHandler(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	if len(store.sessions) != 0 {
+		t.Fatalf("expected the session to be deleted, got %d remaining", len(store.sessions))
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != viewerCookieName {
+		t.Fatalf("expected a %s cookie to be set, got %v", viewerCookieName, cookies)
+	}
+	if cookies[0].MaxAge >= 0 {
+		t.Fatalf("expected the cookie to be expired (negative MaxAge), got %d", cookies[0].MaxAge)
+	}
+}
+
+// ログアウト後のセッションでは、保護されたハンドラに到達できないことを確認する。
+func TestRequireAuth_RejectsSessionAfterLogout(t *testing.T) {
+	store := newFakeViewerStore()
+	store.sessions["valid-session-id"] = true
+	svc := NewViewerService("correct-horse", store)
+
+	logoutReq := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	logoutReq.AddCookie(&http.Cookie{Name: viewerCookieName, Value: "valid-session-id"})
+	svc.LogoutHandler(httptest.NewRecorder(), logoutReq)
+
+	called := false
+	protected := svc.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	// ブラウザが古いCookieを送ってきても通さない
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: viewerCookieName, Value: "valid-session-id"})
+	rec := httptest.NewRecorder()
+	protected.ServeHTTP(rec, req)
+
+	if called {
+		t.Fatal("expected the protected handler NOT to be called after logout")
+	}
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected redirect (302) to /login, got %d", rec.Code)
 	}
 }

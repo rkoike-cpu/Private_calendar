@@ -47,6 +47,7 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /login", viewerSvc.LoginHandler)
+	mux.HandleFunc("POST /logout", viewerSvc.LogoutHandler)
 
 	mux.Handle("GET /auth/google/login", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.LoginHandler)))
 	mux.Handle("GET /auth/google/callback", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.CallbackHandler)))

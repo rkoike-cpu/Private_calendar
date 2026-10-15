@@ -133,6 +133,13 @@ func (s *Store) SaveViewerSession(id string) error {
 	return err
 }
 
+// DeleteViewerSession はログアウト時にセッションを破棄する。
+// 存在しないIDを指定された場合も、結果は「そのセッションは無い」で変わらないためエラーにしない。
+func (s *Store) DeleteViewerSession(id string) error {
+	_, err := s.db.Exec(`DELETE FROM viewer_sessions WHERE id = $1`, id)
+	return err
+}
+
 // ViewerSessionExists は指定されたセッションIDが有効か確認する。
 func (s *Store) ViewerSessionExists(id string) (bool, error) {
 	var exists bool

@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
       // Goの合言葉ログインは /login にあるが、Next.js側の /login はログイン画面(SCR-001)が
       // 使うため、フロントからは /api/login として呼び分ける。
       { source: "/api/login", destination: `${backendOrigin}/login` },
+      { source: "/api/logout", destination: `${backendOrigin}/logout` },
       { source: "/api/:path*", destination: `${backendOrigin}/api/:path*` },
       { source: "/auth/google/:path*", destination: `${backendOrigin}/auth/google/:path*` },
     ];

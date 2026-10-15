@@ -106,6 +106,11 @@ export async function login(password: string): Promise<void> {
   throw new ApiError(res.status, (await res.text()).trim());
 }
 
+/** セッションを破棄してCookieを削除する。 */
+export async function logout(): Promise<void> {
+  await fetch("/api/logout", { method: "POST" });
+}
+
 export function syncGoogle(): Promise<CalendarEvent[] | null> {
   return requestJSON<CalendarEvent[] | null>("/api/sync/google", { method: "POST" });
 }

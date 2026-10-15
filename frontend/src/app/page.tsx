@@ -8,7 +8,7 @@ import { EventDialog } from "@/components/EventDialog";
 import { NotifyButton } from "@/components/NotifyButton";
 import { TodoSection } from "@/components/TodoSection";
 import { WeatherSection } from "@/components/WeatherSection";
-import { syncGoogle, UnauthorizedError, type CalendarEvent } from "@/lib/api";
+import { logout, syncGoogle, UnauthorizedError, type CalendarEvent } from "@/lib/api";
 import { startOfDay, type ViewMode } from "@/lib/calendar";
 
 /** SCR-002 ダッシュボード画面。 */
@@ -47,11 +47,16 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleLogout() {
+    await logout();
+    router.push("/login");
+  }
+
   return (
     <main className="mx-auto w-full max-w-[900px] px-4 py-4">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Personal Calendar</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <NotifyButton onStatusChange={setStatus} onError={handleError} />
           <button
             type="button"
@@ -67,6 +72,20 @@ export default function DashboardPage() {
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-50"
           >
             同期
+          </button>
+          {/* Google連携はバックエンドが同意画面へ転送するため、通常のリンクで遷移させる */}
+          <a
+            href="/auth/google/login"
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            Google連携
+          </a>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-600"
+          >
+            ログアウト
           </button>
         </div>
       </header>

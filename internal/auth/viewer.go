@@ -12,6 +12,7 @@ const viewerCookieName = "viewer_session"
 // ViewerStore はダッシュボードを閲覧してよい端末のセッションを永続化する。
 type ViewerStore interface {
 	SaveViewerSession(id string) error
+	DeleteViewerSession(id string) error
 	ViewerSessionExists(id string) (bool, error)
 }
 
@@ -60,6 +61,30 @@ func (s *ViewerService) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   60 * 60 * 24 * 365, // 1年
 	})
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// LogoutHandler はセッションを破棄し、Cookieを削除する。
+//
+// 認証を必須にしていない。Cookieは残っているがサーバー側のセッションが既に無い、
+// という状態からでもCookieを消せるようにするため。
+func (s *ViewerService) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(viewerCookieName); err == nil {
+		if err := s.store.DeleteViewerSession(cookie.Value); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// MaxAge が負の値だと、ブラウザはそのCookieを即座に削除する。
+	http.SetCookie(w, &http.Cookie{
+		Name:     viewerCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // RequireAuth は有効なビューアセッションが無いリクエストをログイン画面へ誘導する。
