@@ -6,6 +6,16 @@ import type { NextConfig } from "next";
 const backendOrigin = process.env.BACKEND_ORIGIN ?? "http://localhost:8080";
 
 const nextConfig: NextConfig = {
+  // Tailwind CSS v4をTurbopackで処理するための設定(create-next-appが生成したもの)
+  turbopack: {
+    rules: {
+      "*.css": {
+        loaders: ["@tailwindcss/turbopack"],
+        as: "*.css",
+      },
+    },
+  },
+
   async rewrites() {
     return [
       // Goの合言葉ログインは /login にあるが、Next.js側の /login はログイン画面(SCR-001)が
