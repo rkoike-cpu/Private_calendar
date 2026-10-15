@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { CalendarSection } from "@/components/CalendarSection";
+import { EventDialog } from "@/components/EventDialog";
+import { NotifyButton } from "@/components/NotifyButton";
 import { TodoSection } from "@/components/TodoSection";
 import { WeatherSection } from "@/components/WeatherSection";
 import { syncGoogle, UnauthorizedError, type CalendarEvent } from "@/lib/api";
@@ -17,6 +19,8 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(() => startOfDay(new Date()));
   const [syncing, setSyncing] = useState(false);
+  /** SCR-003の状態。undefined=閉じている、null=新規追加、予定=編集。 */
+  const [editing, setEditing] = useState<CalendarEvent | null | undefined>(undefined);
 
   /** セッション切れを検知したらログイン画面へ戻す。各セクションから共通で使う。 */
   const handleError = useCallback(
@@ -48,14 +52,10 @@ export default function DashboardPage() {
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold">Personal Calendar</h1>
         <div className="flex gap-2">
+          <NotifyButton onStatusChange={setStatus} onError={handleError} />
           <button
             type="button"
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-          >
-            🔔 通知
-          </button>
-          <button
-            type="button"
+            onClick={() => setEditing(null)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
           >
             + 予定を追加
@@ -83,8 +83,21 @@ export default function DashboardPage() {
         currentDate={currentDate}
         onViewModeChange={setViewMode}
         onCurrentDateChange={setCurrentDate}
-        onEventClick={() => undefined}
+        onEventClick={setEditing}
       />
+
+      {/* keyを変えて開き直すことで、前回の入力内容が残らないようにする */}
+      {editing !== undefined && (
+        <EventDialog
+          key={editing?.ID ?? "new"}
+          editing={editing}
+          defaultDate={currentDate}
+          onClose={() => setEditing(undefined)}
+          onSaved={setEvents}
+          onStatusChange={setStatus}
+          onError={handleError}
+        />
+      )}
     </main>
   );
 }
