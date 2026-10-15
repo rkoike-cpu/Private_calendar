@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"fmt"
-	"log"
 	"net/http"
 )
 
@@ -29,14 +27,6 @@ type ViewerService struct {
 
 func NewViewerService(password string, store ViewerStore) *ViewerService {
 	return &ViewerService{password: password, store: store}
-}
-
-// LoginPageHandler は合言葉入力フォームを表示する。
-func (s *ViewerService) LoginPageHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := fmt.Fprint(w, loginPageHTML); err != nil {
-		log.Printf("failed to write response: %v", err)
-	}
 }
 
 // LoginHandler は合言葉を確認し、正しければ長期間有効なセッションCookieを発行する。
@@ -96,29 +86,3 @@ func newSessionID() (string, error) {
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
 }
-
-const loginPageHTML = `<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Personal Calendar</title>
-  <link rel="manifest" href="/static/manifest.json" />
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-  <link rel="icon" href="/static/icon-192.png" />
-  <meta name="theme-color" content="#4a86e8" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 320px; margin: 4rem auto; padding: 1rem; }
-    input { width: 100%; padding: 0.6rem; font-size: 1rem; margin-bottom: 0.75rem; box-sizing: border-box; }
-    button { width: 100%; padding: 0.6rem; font-size: 1rem; background: #4a86e8; color: white; border: none; border-radius: 6px; }
-  </style>
-</head>
-<body>
-  <h1>Personal Calendar</h1>
-  <form method="POST" action="/login">
-    <input type="password" name="password" placeholder="合言葉" autofocus required />
-    <button type="submit">ログイン</button>
-  </form>
-</body>
-</html>`

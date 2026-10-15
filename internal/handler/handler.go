@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"io/fs"
 	"log"
 	"net/http"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"personal-calendar/internal/push"
 	"personal-calendar/internal/store"
 	"personal-calendar/internal/weather"
-	webassets "personal-calendar/web"
 )
 
 // writeJSON はレスポンスをJSONとして書き出す。書き込み失敗はクライアントが
@@ -38,6 +36,9 @@ func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
 
 // NewRouter は本アプリの全HTTPルーティングを構築する。
 //
+// 画面(HTML)はフロントエンド(Next.js)が持つため、ここではJSONを返すAPIと、
+// 合言葉・Google認証のエンドポイントだけを扱う。
+//
 // viewerSvc: ダッシュボードへのアクセス制御(合言葉ログイン、端末ごと)
 // googleSvc: Googleカレンダーへのアクセス(サーバー全体で共有する1つの認証)
 // weatherSvc: 天気予報の取得
@@ -45,14 +46,11 @@ func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
 func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, weatherSvc *weather.Service, pushSvc *push.Service, appStore *store.Store) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /login", viewerSvc.LoginPageHandler)
 	mux.HandleFunc("POST /login", viewerSvc.LoginHandler)
 
 	mux.Handle("GET /auth/google/login", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.LoginHandler)))
 	mux.Handle("GET /auth/google/callback", viewerSvc.RequireAuth(http.HandlerFunc(googleSvc.CallbackHandler)))
 
-	mux.Handle("GET /", viewerSvc.RequireAuth(http.HandlerFunc(dashboardHandler)))
-	mux.HandleFunc("GET /sw.js", serviceWorkerHandler)
 	mux.Handle("POST /api/sync/google", viewerSvc.RequireAuth(syncGoogleHandler(googleSvc, appStore)))
 	mux.Handle("POST /api/events", viewerSvc.RequireAuth(createEventHandler(googleSvc)))
 	mux.Handle("PUT /api/events/{id}", viewerSvc.RequireAuth(updateEventHandler(googleSvc)))
@@ -67,41 +65,7 @@ func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, wea
 	mux.Handle("PATCH /api/tasks/{id}", viewerSvc.RequireAuth(updateTaskHandler(appStore)))
 	mux.Handle("DELETE /api/tasks/{id}", viewerSvc.RequireAuth(deleteTaskHandler(appStore)))
 
-	staticFS, err := fs.Sub(webassets.FS, "static")
-	if err != nil {
-		panic(err) // 埋め込みファイルシステムの構成ミス。起動時に気づけるようpanicする。
-	}
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-
 	return mux
-}
-
-// dashboardHandler はダッシュボード画面を返す。
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	data, err := webassets.FS.ReadFile("templates/dashboard.html")
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := w.Write(data); err != nil {
-		log.Printf("failed to write response: %v", err)
-	}
-}
-
-// serviceWorkerHandler はService Workerをルート直下(/sw.js)から配信する。
-// ブラウザはService Workerの適用範囲(scope)をそのスクリプトの置き場所以下に
-// 制限するため、ダッシュボード全体(/)に効かせるにはルート直下から配信する必要がある。
-func serviceWorkerHandler(w http.ResponseWriter, r *http.Request) {
-	data, err := webassets.FS.ReadFile("static/sw.js")
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	if _, err := w.Write(data); err != nil {
-		log.Printf("failed to write response: %v", err)
-	}
 }
 
 // syncGoogleHandler は Google Calendar から最新の予定を取得して返す。

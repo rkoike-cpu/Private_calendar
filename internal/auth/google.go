@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -60,8 +61,13 @@ func (s *GoogleService) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
+// linkedPagePath は連携完了後に利用者へ見せる画面(SCR-004)のパス。
+// 画面はフロントエンド(Next.js)が持つため、ここでは転送するだけにする。
+const linkedPagePath = "/google-linked"
+
 // CallbackHandler はGoogleからのリダイレクトを受け、認可コードをトークンに交換し、
 // アカウントがホワイトリストに含まれるか確認したうえで、共有の認証情報として保存する。
+// 保存まで終えたら、連携したメールアドレスを添えて完了画面へ転送する。
 func (s *GoogleService) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -91,10 +97,8 @@ func (s *GoogleService) CallbackHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := fmt.Fprintf(w, `<p>Googleカレンダーとの連携が完了しました(%s)。</p><p><a href="/">ダッシュボードに戻る</a></p>`, email); err != nil {
-		log.Printf("failed to write response: %v", err)
-	}
+	redirect := url.URL{Path: linkedPagePath, RawQuery: url.Values{"email": {email}}.Encode()}
+	http.Redirect(w, r, redirect.String(), http.StatusFound)
 }
 
 // HTTPClient は、サーバーが保持している共有のGoogle認証情報を使い、
