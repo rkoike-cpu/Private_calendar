@@ -33,66 +33,13 @@ Step 3で実装したバックエンド(Go)と、Step 6で実装したフロン�
 
 ## インフラ構成図
 
-(提出用の画像: [`images/infra-architecture.png`](./images/infra-architecture.png))
+![AWS構成図](./images/infra-architecture.png)
 
-```mermaid
-flowchart TB
-    User["利用者<br/>スマホ / 会社PC"]
-    R53["Route 53<br/>DNSレコード"]
-    ACM["ACM<br/>HTTPS証明書"]
-
-    User -->|HTTPS| R53
-    R53 --> ALB
-    ACM -.->|証明書| ALB
-
-    subgraph VPC["VPC 10.0.0.0/16"]
-        direction TB
-
-        subgraph Pub["パブリックサブネット(AZ-a / AZ-c)"]
-            ALB["Application Load Balancer<br/>HTTPS終端 :443<br/>各EC2の :3000 へ振り分け<br/>ヘルスチェックで異常な台を除外"]
-        end
-
-        subgraph AppTier["プライベートサブネット・アプリ層(AZ-a / AZ-c)"]
-            direction LR
-            EC2a["EC2 (AZ-a)<br/>Next.js :3000<br/>Go API :8080"]
-            ASG["Auto Scaling Group<br/>最小2台 / 最大4台<br/>CPU使用率で増減"]
-            EC2c["EC2 (AZ-c)<br/>Next.js :3000<br/>Go API :8080"]
-        end
-
-        subgraph DBTier["プライベートサブネット・DB層(AZ-a / AZ-c)"]
-            RDS["RDS for PostgreSQL<br/>マルチAZ配置"]
-        end
-
-        NAT["NAT Gateway<br/>パブリックサブネットにAZごと配置<br/>外向き通信のみ"]
-    end
-
-    subgraph Ext["外部サービス"]
-        direction LR
-        GCal["Google<br/>Calendar API"]
-        WAPI["WeatherAPI.com"]
-        WPush["Web Push<br/>FCM等"]
-    end
-
-    subgraph Managed["AWSマネージドサービス"]
-        direction LR
-        SSM["Systems Manager<br/>パラメータストア"]
-        CWL["CloudWatch Logs"]
-    end
-
-    ALB --> EC2a
-    ALB --> EC2c
-    ASG -.->|台数を管理| EC2a
-    ASG -.->|台数を管理| EC2c
-
-    EC2a -->|SQL| RDS
-    EC2c -->|SQL| RDS
-
-    EC2a --> NAT
-    EC2c --> NAT
-    NAT --> Ext
-
-    EC2a -.->|設定取得 / ログ送信| Managed
-```
+| ファイル | 用途 |
+|---|---|
+| [`images/infra-architecture.png`](./images/infra-architecture.png) | 提出用の画像 |
+| [`images/infra-architecture.svg`](./images/infra-architecture.svg) | 拡大しても劣化しない版 |
+| [`infra-architecture.drawio`](./infra-architecture.drawio) | 編集用(draw.io / app.diagrams.net で開く) |
 
 ### インスタンス内部の構成
 
