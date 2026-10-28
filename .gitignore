@@ -6,3 +6,5 @@ data.db
 
 # macOSが自動生成する管理ファイル
 .DS_Store
+token.json
+calendar-test/calendar-test
