@@ -1,0 +1,508 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Personal Calendar (Step 8). CloudFront(VPC origin) -> internal ALB -> EC2 x2 (Auto Scaling, fixed)
+  -> RDS PostgreSQL (Multi-AZ). Secrets are read from SSM Parameter Store (create them before this stack).
+
+Parameters:
+  AvailabilityZone1:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-northeast-1a
+    Description: 1つ目のAZ。AZ IDが apne1-az3 のAZはVPCオリジン非対応のため選ばない
+  AvailabilityZone2:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-northeast-1c
+    Description: 2つ目のAZ。AZ IDが apne1-az3 のAZはVPCオリジン非対応のため選ばない
+  CloudFrontPrefixListId:
+    Type: String
+    AllowedPattern: "^pl-[0-9a-f]+$"
+    Description: >-
+      com.amazonaws.global.cloudfront.origin-facing のプレフィックスリストID
+      (VPCコンソール > マネージドプレフィックスリスト で確認)
+  RepositoryUrl:
+    Type: String
+    Default: https://github.com/rkoike-cpu/Private_calendar.git
+  RepositoryBranch:
+    Type: String
+    Default: main
+  ParameterPrefix:
+    Type: String
+    Default: /personal-calendar
+    Description: アプリの設定値を置いたParameter Storeのパス(末尾のスラッシュなし)
+  DBUsername:
+    Type: String
+    Default: calendar
+  DBName:
+    Type: String
+    Default: personal_calendar
+  InstanceType:
+    Type: String
+    Default: t3.small
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  NodeVersion:
+    Type: String
+    Default: 22.12.0
+    Description: EC2に入れるNode.jsのバージョン(nodejs.orgの公式バイナリを使う)
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  # ---------------------------------------------------------------- ネットワーク
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: personal-calendar }]
+
+  # EC2の外向き通信に使う。VPCオリジンの前提条件としても必要
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: personal-calendar }]
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # パブリック: EC2(パブリックIPを自動で付与し、IGWから直接外へ出る)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: personal-calendar-public-1 }]
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: personal-calendar-public-2 }]
+
+  # プライベート(ALB): 内部向けALBとVPCオリジンのネットワークインターフェース
+  AlbSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: 10.0.10.0/24
+      Tags: [{ Key: Name, Value: personal-calendar-alb-1 }]
+  AlbSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: 10.0.11.0/24
+      Tags: [{ Key: Name, Value: personal-calendar-alb-2 }]
+
+  # プライベート(DB): RDS
+  DbSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone1
+      CidrBlock: 10.0.20.0/24
+      Tags: [{ Key: Name, Value: personal-calendar-db-1 }]
+  DbSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone2
+      CidrBlock: 10.0.21.0/24
+      Tags: [{ Key: Name, Value: personal-calendar-db-2 }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: personal-calendar-public }]
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnet1RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnet2RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # インターネットへの経路を持たないルートテーブル(VPC内の通信のみ)
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: personal-calendar-private }]
+  AlbSubnet1RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AlbSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  AlbSubnet2RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AlbSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+  DbSubnet1RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DbSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  DbSubnet2RouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DbSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ---------------------------------------------------------------- セキュリティグループ
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - HTTP from CloudFront VPC origin only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+      Tags: [{ Key: Name, Value: personal-calendar-alb }]
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 - Next.js 3000 from ALB only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+      Tags: [{ Key: Name, Value: personal-calendar-app }]
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS - PostgreSQL 5432 from EC2 only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+      Tags: [{ Key: Name, Value: personal-calendar-db }]
+
+  # ---------------------------------------------------------------- データベース
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: personal-calendar private DB subnets
+      SubnetIds: [!Ref DbSubnet1, !Ref DbSubnet2]
+
+  # 学習用のため、スタック削除時にスナップショットを残さず削除する
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: postgres
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: "20"
+      StorageType: gp3
+      MultiAZ: true
+      PubliclyAccessible: false
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Sub "{{resolve:ssm-secure:${ParameterPrefix}/DB_PASSWORD}}"
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+      Tags: [{ Key: Name, Value: personal-calendar }]
+
+  # ---------------------------------------------------------------- ロードバランサ
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internal
+      Subnets: [!Ref AlbSubnet1, !Ref AlbSubnet2]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      Tags: [{ Key: Name, Value: personal-calendar }]
+
+  # /api/health はNext.jsの転送を経てGoが返すため、両方が動いているときだけ正常になる
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Protocol: HTTP
+      Port: 3000
+      TargetType: instance
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher: { HttpCode: "200" }
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"
+
+  AlbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ---------------------------------------------------------------- CloudFront
+  VpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    Properties:
+      VpcOriginEndpointConfig:
+        Name: personal-calendar-alb
+        Arn: !Ref Alb
+        HTTPPort: 80
+        HTTPSPort: 443
+        OriginProtocolPolicy: http-only
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: personal-calendar
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: alb
+            DomainName: !GetAtt Alb.DNSName
+            VpcOriginConfig:
+              VpcOriginId: !GetAtt VpcOrigin.Id
+        DefaultCacheBehavior:
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # マネージドポリシー: CachingDisabled / AllViewer
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # ---------------------------------------------------------------- 権限・ログ
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: /personal-calendar/app
+      RetentionInDays: 14
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore # Session Managerでの接続
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy  # CloudWatch Logsへの書き込み
+      Policies:
+        - PolicyName: read-app-parameters
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ssm:GetParametersByPath, ssm:GetParameter, ssm:GetParameters]
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterPrefix}"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterPrefix}/*"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  # ---------------------------------------------------------------- アプリケーション
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile: { Arn: !GetAtt InstanceProfile.Arn }
+        SecurityGroupIds: [!Ref AppSecurityGroup]
+        MetadataOptions: { HttpTokens: required }
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: { VolumeSize: 20, VolumeType: gp3, Encrypted: true }
+        TagSpecifications:
+          - ResourceType: instance
+            Tags: [{ Key: Name, Value: personal-calendar }]
+        # 初回起動時に、GitHubからコードを取得してビルドし、systemdで起動する。
+        # 秘密情報はディスクに書かず、Goの起動のたびにParameter Storeから読む。
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            set -euxo pipefail
+            exec > >(tee -a /var/log/user-data.log) 2>&1
+
+            # --- ログをCloudWatch Logsへ送る(ビルドの失敗も追えるよう最初に設定する)
+            dnf install -y git tar xz golang amazon-cloudwatch-agent
+            mkdir -p /var/log/personal-calendar
+            cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'EOF'
+            {
+              "agent": { "run_as_user": "root" },
+              "logs": { "logs_collected": { "files": { "collect_list": [
+                { "file_path": "/var/log/user-data.log", "log_group_name": "${AppLogGroup}", "log_stream_name": "{instance_id}/user-data" },
+                { "file_path": "/var/log/personal-calendar/backend.log", "log_group_name": "${AppLogGroup}", "log_stream_name": "{instance_id}/backend" },
+                { "file_path": "/var/log/personal-calendar/frontend.log", "log_group_name": "${AppLogGroup}", "log_stream_name": "{instance_id}/frontend" }
+              ] } } }
+            }
+            EOF
+            /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+              -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+            # --- t3.small(メモリ2GB)でNext.jsのビルドが落ちないようスワップを足す
+            if [ ! -f /swapfile ]; then
+              dd if=/dev/zero of=/swapfile bs=1M count=2048
+              chmod 600 /swapfile
+              mkswap /swapfile
+            fi
+            swapon /swapfile || true
+
+            # --- Node.js(公式バイナリ)。Goはgo.modの指定に合わせて自動でツールチェーンを取得する
+            curl -fsSL https://nodejs.org/dist/v${NodeVersion}/node-v${NodeVersion}-linux-x64.tar.xz | tar -xJ -C /opt
+            ln -sfn /opt/node-v${NodeVersion}-linux-x64 /opt/node
+            export PATH=/opt/node/bin:$PATH
+            export HOME=/root GOPATH=/root/go GOTOOLCHAIN=auto
+
+            # --- ビルド
+            id app || useradd --system --home-dir /opt/app --shell /sbin/nologin app
+            mkdir -p /opt/app
+            rm -rf /opt/app/src
+            git clone --depth 1 --branch ${RepositoryBranch} ${RepositoryUrl} /opt/app/src
+            cd /opt/app/src
+            go build -o /opt/app/server ./cmd/server
+            cd /opt/app/src/frontend
+            npm ci
+            NODE_OPTIONS=--max-old-space-size=1536 npm run build
+
+            # --- Goの起動スクリプト。Parameter Storeの値を環境変数にしてからサーバーを起動する
+            cat > /opt/app/run-backend.sh <<'EOF'
+            #!/bin/bash
+            set -euo pipefail
+            eval "$(aws ssm get-parameters-by-path --region ${AWS::Region} --path ${ParameterPrefix}/ \
+              --with-decryption --output json | python3 -c '
+            import json, shlex, sys
+            for p in json.load(sys.stdin)["Parameters"]:
+                print("export %s=%s" % (p["Name"].rsplit("/", 1)[1], shlex.quote(p["Value"])))
+            ')"
+            export DATABASE_URL="postgres://${DBUsername}:$DB_PASSWORD@${Database.Endpoint.Address}:5432/${DBName}?sslmode=require"
+            export OAUTH_REDIRECT_URL="https://${Distribution.DomainName}/auth/google/callback"
+            export PORT=8080
+            exec /opt/app/server
+            EOF
+            chmod 755 /opt/app/run-backend.sh
+
+            cat > /etc/systemd/system/pc-backend.service <<'EOF'
+            [Unit]
+            Description=Personal Calendar backend (Go)
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            User=app
+            ExecStart=/opt/app/run-backend.sh
+            Restart=always
+            RestartSec=5
+            StandardOutput=append:/var/log/personal-calendar/backend.log
+            StandardError=append:/var/log/personal-calendar/backend.log
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            cat > /etc/systemd/system/pc-frontend.service <<'EOF'
+            [Unit]
+            Description=Personal Calendar frontend (Next.js)
+            After=network-online.target pc-backend.service
+
+            [Service]
+            User=app
+            WorkingDirectory=/opt/app/src/frontend
+            Environment=NODE_ENV=production
+            ExecStart=/opt/node/bin/node node_modules/next/dist/bin/next start -p 3000
+            Restart=always
+            RestartSec=5
+            StandardOutput=append:/var/log/personal-calendar/frontend.log
+            StandardError=append:/var/log/personal-calendar/frontend.log
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            chown -R app:app /opt/app /var/log/personal-calendar
+            systemctl daemon-reload
+            systemctl enable --now pc-backend.service pc-frontend.service
+
+  # 台数を増減させず、故障したインスタンスの入れ替えにだけ使う(2台固定)
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: [PublicDefaultRoute, PublicSubnet1RouteTable, PublicSubnet2RouteTable]
+    Properties:
+      MinSize: "2"
+      MaxSize: "2"
+      DesiredCapacity: "2"
+      VPCZoneIdentifier: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      TargetGroupARNs: [!Ref TargetGroup]
+      HealthCheckType: ELB
+      # 初回起動はビルドに10分前後かかるため、その間はヘルスチェックの失敗で入れ替えない
+      HealthCheckGracePeriod: 1200
+      Tags:
+        - Key: Name
+          Value: personal-calendar
+          PropagateAtLaunch: true
+
+Outputs:
+  AppUrl:
+    Description: ブラウザで開くURL
+    Value: !Sub "https://${Distribution.DomainName}"
+  HealthCheckUrl:
+    Description: curlで疎通確認するURL
+    Value: !Sub "https://${Distribution.DomainName}/api/health"
+  GoogleRedirectUri:
+    Description: Google Cloud Consoleの「承認済みのリダイレクトURI」に登録する値
+    Value: !Sub "https://${Distribution.DomainName}/auth/google/callback"
+  LogGroup:
+    Description: アプリのログ
+    Value: !Ref AppLogGroup

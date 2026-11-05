@@ -196,21 +196,24 @@ func (s *Store) ListPushSubscriptions() ([]PushSubscription, error) {
 	return subs, rows.Err()
 }
 
-// HasReminderBeenSent は、指定した予定について既にリマインダーを送信済みか確認する。
-func (s *Store) HasReminderBeenSent(eventID string) (bool, error) {
-	var exists bool
-	err := s.db.QueryRow(
-		`SELECT EXISTS(SELECT 1 FROM sent_reminders WHERE event_id = $1)`, eventID,
-	).Scan(&exists)
-	return exists, err
-}
-
-// MarkReminderSent は、指定した予定のリマインダーを送信済みとして記録する。
-func (s *Store) MarkReminderSent(eventID string) error {
-	_, err := s.db.Exec(
+// ClaimReminder は、指定した予定のリマインダーを送信済みとして記録し、
+// 自分が記録できた場合だけtrueを返す。
+//
+// 複数台のサーバーが同時に同じ予定を見つけても、event_idの主キー制約により
+// 行を追加できるのは1台だけになる。確認と記録を別々に行うと、両方が
+// 「未送信」と判断して二重に通知してしまうため、1回の操作にまとめている。
+func (s *Store) ClaimReminder(eventID string) (bool, error) {
+	res, err := s.db.Exec(
 		`INSERT INTO sent_reminders (event_id) VALUES ($1) ON CONFLICT (event_id) DO NOTHING`, eventID,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
 }
 
 // SetEventCategory は予定の色分けカテゴリを保存する。このアプリの画面上だけの表示に

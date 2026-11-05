@@ -24,6 +24,12 @@ func writeJSON(w http.ResponseWriter, v any) {
 	}
 }
 
+// healthHandler は認証なしで常に200を返す。
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
 // writeCalendarError はGoogle Calendar APIのエラーを見て、可能であれば
 // ユーザーに分かりやすいメッセージを返す。
 func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
@@ -45,6 +51,12 @@ func writeCalendarError(w http.ResponseWriter, err error, fallback string) {
 // pushSvc: プッシュ通知の送信、appStore: 通知購読情報の保存
 func NewRouter(viewerSvc *auth.ViewerService, googleSvc *auth.GoogleService, weatherSvc *weather.Service, pushSvc *push.Service, appStore *store.Store) http.Handler {
 	mux := http.NewServeMux()
+
+	// 死活確認用。ALBのヘルスチェックはNext.js経由でここを呼ぶため、
+	// Next.jsとGoの両方が動いているときだけ200になる。
+	// DBは確認しない。RDSのフェイルオーバー中に全台が異常と判定され、
+	// 正常なインスタンスまでAuto Scalingに入れ替えられてしまうのを避けるため。
+	mux.HandleFunc("GET /api/health", healthHandler)
 
 	mux.HandleFunc("POST /login", viewerSvc.LoginHandler)
 	mux.HandleFunc("POST /logout", viewerSvc.LogoutHandler)

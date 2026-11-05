@@ -61,20 +61,18 @@ func checkOnce(ctx context.Context, googleSvc *auth.GoogleService, pushSvc *push
 			continue
 		}
 
-		sent, err := st.HasReminderBeenSent(event.ID)
+		// 先に送信済みとして記録し、記録できた場合だけ送る。複数台で動かしたときに
+		// 同じ予定の通知を送る権利を1台に絞るため。
+		claimed, err := st.ClaimReminder(event.ID)
 		if err != nil {
-			log.Printf("reminder: check sent status failed: %v", err)
+			log.Printf("reminder: claim failed: %v", err)
 			continue
 		}
-		if sent {
+		if !claimed {
 			continue
 		}
 
 		notifyAll(pushSvc, st, event)
-
-		if err := st.MarkReminderSent(event.ID); err != nil {
-			log.Printf("reminder: mark sent failed: %v", err)
-		}
 	}
 }
 
