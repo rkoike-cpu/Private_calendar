@@ -43,6 +43,8 @@ Systems Manager コンソール >「パラメータストア」>「パラメー�
 
 `APP_PASSWORD` 以降は、ローカルの `.env` や Render で使っている値と同じでよい。VAPIDの鍵を変えると、登録済みの端末のプッシュ通知が届かなくなる。
 
+`GOOGLE_OAUTH_CREDENTIALS_JSON` は、Google連携を使わない場合も登録する。Goは起動時にこの値を読み込み、無いとエラーで停止する。
+
 ## 4. スタックを作る
 
 1. CloudFormationコンソール >「スタックの作成」>「新しいリソースを使用(標準)」
@@ -71,7 +73,9 @@ Systems Manager コンソール >「パラメータストア」>「パラメー�
 
 スタックの「出力」タブに、使うURLが表示されている。
 
-### Google側にリダイレクトURIを登録する
+### Google側にリダイレクトURIを登録する(Google連携を使う場合のみ)
+
+Step 8の提出では、社内のセキュリティ上の判断によりGoogle連携を行わなかったため、この手順は実施していない。
 
 1. Google Cloud Console >「APIとサービス」>「認証情報」で、使っているOAuthクライアントを開く
 2. 「承認済みのリダイレクトURI」に、出力の `GoogleRedirectUri` (`https://xxxx.cloudfront.net/auth/google/callback`)を追加して保存する
@@ -89,8 +93,10 @@ curl -i https://xxxx.cloudfront.net/api/health
 ### ブラウザでの確認(提出用)
 
 1. 出力の `AppUrl` を開き、合言葉でログインする
-2. 会社PCからGoogle連携を行う(RDSは新しいDBなので、連携は最初からやり直しになる)
-3. 予定の表示・追加・更新・削除ができることを確認する
+2. ダッシュボードに「今日の天気」が表示されることを確認する(EC2から外部APIへの通信)
+3. ToDoを追加し、ページを再読み込みしても残ることを確認する(EC2からRDSへの保存)
+
+Google連携を使う場合は、さらに会社PCから連携を行い(RDSは新しいDBなので、連携は最初からやり直しになる)、予定の表示・追加・更新・削除ができることを確認する。Google連携をしていない状態で「同期」を押すとエラーになる。
 
 ## 7. 困ったとき
 
@@ -114,4 +120,4 @@ EC2は起動時にGitHubからコードを取得するため、インスタン�
 
 1. CloudFormationコンソールでスタック `personal-calendar` を削除する(RDSはスナップショットを残さず削除される)
 2. Parameter Store の `/personal-calendar/` 以下のパラメータを削除する
-3. Google Cloud Console に追加したリダイレクトURIを削除する
+3. Google Cloud Console にリダイレクトURIを追加していた場合は、それを削除する
