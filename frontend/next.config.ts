@@ -6,6 +6,11 @@ import type { NextConfig } from "next";
 const backendOrigin = process.env.BACKEND_ORIGIN ?? "http://localhost:8080";
 
 const nextConfig: NextConfig = {
+  // Dockerイメージを作るときだけ、実行に必要なファイルを .next/standalone にまとめて出力する
+  // (frontend/Dockerfile が NEXT_OUTPUT=standalone を渡す)。
+  // Step 8のEC2のように next start で起動する場合は、これまでどおりの出力にする。
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
+
   // Tailwind CSS v4をTurbopackで処理するための設定(create-next-appが生成したもの)
   turbopack: {
     rules: {

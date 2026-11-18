@@ -1,0 +1,99 @@
+# Personal Calendar を、3層(Web / アプリ / DB)のコンテナとしてローカルで起動する。
+#
+#   docker compose up -d
+#
+#   ブラウザ → frontend (:3000) → backend (:8080) → db (:5432)
+#               └── front-tier ──────┘└── back-tier ─────┘
+#
+# 起動する前に、このファイルと同じフォルダに .env を作り、次の値を書いておく。
+# .env はGitに含めない(.gitignore 済み)。
+#
+#   POSTGRES_PASSWORD=   DBのパスワード。英数字のみ(記号を入れると接続URLが壊れる)
+#   APP_PASSWORD=        ダッシュボードの合言葉
+#   WEATHER_API_KEY=     WeatherAPI.com のキー
+#   VAPID_PUBLIC_KEY=    プッシュ通知の鍵(go run ./cmd/genvapidkeys で作れる)
+#   VAPID_PRIVATE_KEY=
+
+name: personal-calendar
+
+services:
+  # Web層: 画面を返し、/api/* を backend へ転送する
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_ORIGIN: http://backend:8080
+    ports:
+      # Macに開けるのはこの3000番だけ。127.0.0.1 を付けて、Mac自身からの接続に限る
+      # (付けないと、同じWi-Fiにいる他の端末からも接続できてしまう)
+      - "127.0.0.1:3000:3000"
+    networks:
+      - front-tier
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Step 8のALBと同じく、Next.jsを経由してGoまで届くかを確認する
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # アプリ層: APIと認証
+  backend:
+    build: .
+    environment:
+      DATABASE_URL: postgres://calendar:${POSTGRES_PASSWORD:?.envに設定してください}@db:5432/personal_calendar?sslmode=disable
+      APP_PASSWORD: ${APP_PASSWORD:?.envに設定してください}
+      WEATHER_API_KEY: ${WEATHER_API_KEY:?.envに設定してください}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?.envに設定してください}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?.envに設定してください}
+      # Google連携は使わない。Goは起動時にこの値を必ず読み込むため、形だけ整えたダミーを渡す。
+      # 接続先には存在しないドメイン(.invalid)を入れ、誤って「Google連携」を押してもGoogleには繋がらない
+      GOOGLE_OAUTH_CREDENTIALS_JSON: >-
+        {"web":{"client_id":"dummy","client_secret":"dummy",
+        "redirect_uris":["http://localhost:3000/auth/google/callback"],
+        "auth_uri":"https://google-disabled.invalid/auth",
+        "token_uri":"https://google-disabled.invalid/token"}}
+    networks:
+      - front-tier
+      - back-tier
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # DB層: データを保存する
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: calendar
+      POSTGRES_DB: personal_calendar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.envに設定してください}
+    volumes:
+      # DBのデータを名前付きボリュームに置き、コンテナを作り直しても残るようにする
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - back-tier
+    healthcheck:
+      # 127.0.0.1 を指定してTCPで確認する。初回の初期化中に動く一時的なサーバーは
+      # TCPで待ち受けないため、本来のサーバーが起動するまでhealthyにならない
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U calendar -d personal_calendar"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  # frontendとbackendをつなぐ
+  front-tier: {}
+  # backendとdbをつなぐ。internal にして、外(インターネット)への経路を持たせない。
+  # frontendはこのネットワークに入っていないため、dbへは直接つながらない
+  back-tier:
+    internal: true
+
+volumes:
+  db-data: {}

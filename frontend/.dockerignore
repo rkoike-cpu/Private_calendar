@@ -1,0 +1,7 @@
+# frontendのイメージのビルドに渡さないもの。
+# node_modules と .next はイメージの中で作り直すため、手元のものを持ち込まない
+node_modules
+.next
+# 秘密の値を含む可能性があるファイル
+.env*
+npm-debug.log*
